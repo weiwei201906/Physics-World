@@ -22,18 +22,16 @@ Physics-World/
 │   ├── profile-bootstrap-consumer/
 │   ├── qbank-client/         # Rust gRPC 客户端
 │   ├── question-bank/        # C++20 + Tencent Flare + Blade
-│   ├── gateway/              # Ingress-Nginx + OpenResty Lua
-│   ├── config/               # 动态配置默认值（按 namespace）
 │   └── migrations/           # PostgreSQL schema / migration
 ├── contracts/
 │   ├── graphql/              # user-api 与 recommendation SDL
 │   └── proto/                # qbank.v1 标准 gRPC 契约
 ├── docs/
 │   ├── architecture.md       # 架构基线（用户提供）
-│   └── git-workflow.md       # 分支、提交、评审与合并规范
-├── deploy/                   # Nginx 网关模板、Dockerfile 与 docker-compose
+│   ├── git-workflow.md       # 分支、提交、评审与合并规范
+│   └── specs/                # 规格与任务清单
+├── deploy/                   # 网关模板（deploy/gateway/default.conf.template）、Dockerfile 与 docker-compose
 ├── scripts/                  # 开发脚本与 Git hooks
-└── tests/e2e/                # Playwright 全链路测试
 ```
 
 ## 并行开发
@@ -51,17 +49,50 @@ git worktree add .worktrees/question-bank  -b feat/backend-question-bank     dev
 ## 本地验证
 
 ```bash
-cd frontend && npm ci && npm run type-check && npm run lint:check && npm test
-cd backend && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
-cd backend/question-bank && blade test //...
+npm --prefix frontend run type-check
+npm --prefix frontend run lint:check
+npm --prefix frontend test
+cd backend && cargo fmt --all -- --check
+cd backend && cargo clippy --workspace --all-targets -- -D warnings
+cd backend && cargo test --workspace
 ```
 
-网关与前后端联调：
+题库服务当前为离线骨架（Flare/Blade 依赖尚未 vendoring 进仓库），本地构建状态标记 `UNVERIFIED`。
+
+网关与前后端联调（推荐方式，一条命令拉起数据库、5 个服务、网关与前端）：
 
 ```bash
-cd frontend && npm run build
-NGINX_BIN=/usr/sbin/nginx scripts/smoke_backend.sh
+bash scripts/dev_stack.sh up
+# 浏览器访问 http://127.0.0.1:8080
+bash scripts/dev_stack.sh status
+bash scripts/dev_stack.sh down
 ```
+
+## 部署与数据库
+
+本地开发/测试使用的 PostgreSQL 18 与 Redis 8 由脚本拉起（端口 `15432`/`16379`），不依赖 Docker：
+
+```bash
+bash scripts/dev_db.sh start    # 启动，并打印 DATABASE_URL / REDIS_URL
+bash scripts/dev_db.sh status   # 查看状态
+bash scripts/dev_db.sh stop     # 停止
+bash scripts/dev_db.sh reset    # 清空并重新初始化
+```
+
+`scripts/dev_stack.sh up` 会在数据库就绪后构建并启动 `auth-service`、`user-api`、`user-api-sse`、
+`recommendation-service`、`battle-service`，渲染 nginx 网关并监听 `8080`。
+
+生产/集成部署使用 `deploy/docker-compose.yml`，其中已包含 `postgres:18-alpine` 与 `redis:8-alpine`（数据持久化到命名卷 `pgdata`/`redisdata`，仅通过内部网络访问，不暴露宿主机端口）：
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+> 该命令需要能访问容器镜像仓库的环境；本机无法拉取镜像时请使用 `scripts/dev_stack.sh`。
+
+`auth-service` 与 `user-api` 会等待 `postgres`/`redis` 健康后启动，并在启动时自动执行 `backend/migrations` 下的迁移（`sqlx::migrate!`）。默认凭据与服务端口见 compose 文件。
+
+> 注意：`scripts/dev_db.sh` 只用于本机测试；生产部署使用 compose 中的 `postgres`/`redis` 服务。
 
 ## 许可证
 
