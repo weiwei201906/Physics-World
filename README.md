@@ -57,3 +57,7 @@ cd backend/question-bank && blade test //...
 ```
 
 > 当前 Linux 环境已具备 g++ 15 / clang 21 / cmake 4 / protoc 3.21；Node.js、Rust 默认工具链与 Blade 尚未就绪，对应构建与测试命令待安装后执行。运行 cmake/clang/protoc 前需清除 Trae 注入的 `LD_LIBRARY_PATH` 与 `LD_PRELOAD`。
+
+## 许可证
+
+本项目采用 [GNU General Public License v3.0](LICENSE)（SPDX 标识：`GPL-3.0-only`）。任何分发或修改后的版本都必须以同一许可证开源。
