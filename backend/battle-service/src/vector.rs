@@ -92,6 +92,12 @@ impl PgVectorSource {
             .map_err(|error| AppError::internal(format!("connect vector store: {error}")))?;
         Ok(Self { pool })
     }
+
+    /// Reuses an existing pool so the reconciler, history endpoint and vector
+    /// lookup share one connection pool instead of opening several.
+    pub fn from_pool(pool: PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 #[async_trait]

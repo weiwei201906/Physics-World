@@ -44,7 +44,10 @@
     "search": "搜索",
     "filter": "筛选",
     "optional": "选填",
-    "required": "必填"
+    "required": "必填",
+    "language": "语言",
+    "langZh": "中文",
+    "langEn": "English"
   },
   "boot": {
     "title": "正在读取实验台配置…",
@@ -230,6 +233,7 @@
     "resultDraw": "本局平局",
     "finalScore": "最终得分 {score}",
     "backToLobby": "返回对战大厅",
+    "endBattle": "结束对战",
     "joinError": "进入房间失败，请重试。",
     "matchError": "匹配没有完成，请稍后重试。",
     "sessionExpired": "登录状态失效，对战已断开。",
@@ -242,6 +246,9 @@
     "score": "得分",
     "players": "玩家",
     "status": "状态",
+    "rank": "名次",
+    "correctCount": "答对",
+    "correctShort": "对 {count}",
     "waitingForMatch": "正在等待另一位同学…",
     "cancelHint": "取消后可以重新选择模式。",
     "errorGeneric": "对战连接出现问题。"
@@ -308,7 +315,13 @@
     "cancelEdit": "取消编辑",
     "avatarPreview": "头像预览",
     "identity": "账号信息",
-    "emptyStats": "还没有答题数据。"
+    "emptyStats": "还没有答题数据。",
+    "battleHistory": "对战记录",
+    "noBattles": "还没有对战记录。",
+    "battleLoading": "正在读取对战记录…",
+    "battleError": "对战记录加载失败。",
+    "opponent": "对手",
+    "resultShort": "结果"
   },
   "admin": {
     "title": "管理台",

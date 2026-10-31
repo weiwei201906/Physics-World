@@ -1,10 +1,12 @@
 import type {
   BattleAnswerResult,
   BattleGameOver,
+  BattleHistoryEntry,
   BattleMode,
   BattleQuestionFrame,
   BattleRoomState
 } from '@/types'
+import http from '@/api/http'
 
 /**
  * Battle transport contract. The gateway accepts the access token in the query
@@ -127,4 +129,13 @@ export function answerFrame(questionIndex: number, optionId: string): AnswerFram
 
 export function tokenUpdateFrame(token: string): TokenUpdateFrame {
   return { type: BATTLE_FRAME.TOKEN_UPDATE, token }
+}
+
+/**
+ * Fetches the authenticated player's recent battle records. The gateway scopes
+ * the query to the caller via the X-User-Id header.
+ */
+export async function getBattleHistory(signal?: AbortSignal): Promise<BattleHistoryEntry[]> {
+  const response = await http.get<BattleHistoryEntry[]>('/api/battles/history', { signal })
+  return response.data
 }

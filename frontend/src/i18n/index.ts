@@ -1,6 +1,38 @@
+import { ref } from 'vue'
 import zhCN from '@/locales/zh-CN.json'
+import enUS from '@/locales/en-US.json'
 
-export const messages = zhCN
+export type Locale = 'zh-CN' | 'en-US'
+
+export const availableLocales: Locale[] = ['zh-CN', 'en-US']
+
+const LOCALE_STORAGE_KEY = 'pw-locale'
+
+const messages: Record<Locale, typeof zhCN> = {
+  'zh-CN': zhCN,
+  'en-US': enUS as typeof zhCN
+}
+
+function detectInitialLocale(): Locale {
+  if (typeof localStorage !== 'undefined') {
+    const saved = localStorage.getItem(LOCALE_STORAGE_KEY)
+    if (saved === 'zh-CN' || saved === 'en-US') return saved
+  }
+  if (typeof navigator !== 'undefined' && navigator.language) {
+    return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
+  }
+  return 'zh-CN'
+}
+
+export const locale = ref<Locale>(detectInitialLocale())
+
+export function setLocale(next: Locale): void {
+  if (next === locale.value) return
+  locale.value = next
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(LOCALE_STORAGE_KEY, next)
+  }
+}
 
 type Primitive = string | number | boolean | null | undefined
 
@@ -18,7 +50,7 @@ export type TranslationParams = Record<string, string | number>
 
 function readPath(key: string): unknown {
   const parts = key.split('.')
-  let cursor: unknown = messages
+  let cursor: unknown = messages[locale.value]
   for (const part of parts) {
     if (typeof cursor !== 'object' || cursor === null) return undefined
     cursor = (cursor as Record<string, unknown>)[part]
@@ -41,6 +73,7 @@ function interpolate(template: string, params?: TranslationParams): string {
 /**
  * Translate a nested locale key. Unknown keys fall back to the key itself so a
  * missing translation is visible during development and never renders blank UI.
+ * Reads the active `locale` ref so callers re-render when the language changes.
  */
 export function t(key: TranslationKey, params?: TranslationParams): string {
   const template = readPath(key)

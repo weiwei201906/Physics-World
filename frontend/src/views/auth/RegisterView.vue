@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { t } from '@/i18n'
 import BrandMark from '@/components/BrandMark.vue'
+import LanguageToggle from '@/components/LanguageToggle.vue'
 import PhysicsGlyph from '@/components/PhysicsGlyph.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -47,13 +48,16 @@ async function handleSubmit(): Promise<void> {
   <div class="auth-shell">
     <div class="auth-grid">
       <section class="auth-form-col">
-        <RouterLink to="/" class="brand">
-          <BrandMark :size="34" class="brand-glyph" />
-          <span class="brand-text">
-            <span class="brand-word">{{ t('brand.name') }}</span>
-            <span class="brand-zh">{{ t('brand.nameZh') }}</span>
-          </span>
-        </RouterLink>
+        <div class="auth-form-head">
+          <RouterLink to="/" class="brand">
+            <BrandMark :size="34" class="brand-glyph" />
+            <span class="brand-text">
+              <span class="brand-word">{{ t('brand.name') }}</span>
+              <span class="brand-zh">{{ t('brand.nameZh') }}</span>
+            </span>
+          </RouterLink>
+          <LanguageToggle />
+        </div>
 
         <p class="eyebrow">{{ t('brand.tagline') }}</p>
         <h1 class="auth-title">{{ t('auth.registerTitle') }}</h1>
@@ -141,11 +145,18 @@ async function handleSubmit(): Promise<void> {
   padding: var(--space-5) 0;
 }
 
+.auth-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-7);
+}
+
 .brand {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-7);
   color: var(--color-text);
   text-decoration: none;
 }

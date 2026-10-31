@@ -112,6 +112,7 @@ pub struct PlayerSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct RoomView {
     pub room_id: Uuid,
+    pub mode: String,
     pub phase: RoomPhase,
     pub players: Vec<PlayerSnapshot>,
     pub current_index: usize,
@@ -148,6 +149,9 @@ pub struct PlayerResult {
 #[serde(rename_all = "camelCase")]
 pub struct BattleResult {
     pub room_id: Uuid,
+    pub mode: String,
+    pub question_count: u32,
+    pub started_at: DateTime<Utc>,
     pub finished_at: DateTime<Utc>,
     pub winner: Option<Uuid>,
     pub players: Vec<PlayerResult>,
@@ -156,10 +160,13 @@ pub struct BattleResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnswerOutcome {
     pub room_id: Uuid,
+    pub mode: String,
     pub question_index: usize,
     pub applied: bool,
     pub duplicate: bool,
     pub correct: bool,
+    pub correct_option_id: String,
+    pub explanation: String,
     pub points: i32,
     pub speed_bonus: i32,
     pub total_score: i32,
@@ -238,6 +245,7 @@ struct AnswerRecord {
 #[derive(Debug)]
 struct Room {
     id: Uuid,
+    mode: String,
     phase: RoomPhase,
     players: BTreeMap<Uuid, PlayerState>,
     questions: Vec<QuestionSpec>,
@@ -252,11 +260,18 @@ struct Room {
 }
 
 impl Room {
-    fn new(id: Uuid, player: Uuid, nickname: String, created_at: DateTime<Utc>) -> Self {
+    fn new(
+        id: Uuid,
+        player: Uuid,
+        nickname: String,
+        mode: String,
+        created_at: DateTime<Utc>,
+    ) -> Self {
         let mut players = BTreeMap::new();
         players.insert(player, PlayerState::new(nickname));
         Self {
             id,
+            mode,
             phase: RoomPhase::Waiting,
             players,
             questions: Vec::new(),
@@ -285,6 +300,7 @@ impl Room {
     fn view(&self) -> RoomView {
         RoomView {
             room_id: self.id,
+            mode: self.mode.clone(),
             phase: self.phase,
             players: self
                 .players
@@ -369,6 +385,9 @@ impl Room {
         };
         BattleResult {
             room_id: self.id,
+            mode: self.mode.clone(),
+            question_count: self.questions.len() as u32,
+            started_at: self.started_at.unwrap_or(self.created_at),
             finished_at: self.finished_at.unwrap_or(self.created_at),
             winner,
             players: ranked,
@@ -400,7 +419,7 @@ impl BattleEngine {
     }
 
     pub fn enqueue(&mut self, player: Uuid) -> Result<(EnqueueOutcome, Vec<EngineEvent>)> {
-        self.enqueue_with_profile(player, None, PlayerVector::default())
+        self.enqueue_with_profile(player, None, None, PlayerVector::default())
     }
 
     pub fn enqueue_with_vector(
@@ -408,7 +427,7 @@ impl BattleEngine {
         player: Uuid,
         vector: PlayerVector,
     ) -> Result<(EnqueueOutcome, Vec<EngineEvent>)> {
-        self.enqueue_with_profile(player, None, vector)
+        self.enqueue_with_profile(player, None, None, vector)
     }
 
     /// Queues `player` and pairs it with the waiting opponent whose error
@@ -417,12 +436,17 @@ impl BattleEngine {
         &mut self,
         player: Uuid,
         nickname: Option<String>,
+        mode: Option<String>,
         vector: PlayerVector,
     ) -> Result<(EnqueueOutcome, Vec<EngineEvent>)> {
         let nickname = nickname
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "Player".to_string());
+        let mode = mode
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "1v1".to_string());
         let now = self.clock.now();
         let mut events = self.expire_waiting(now);
 
@@ -476,7 +500,7 @@ impl BattleEngine {
         }
 
         let room_id = Uuid::new_v4();
-        let room = Room::new(room_id, player, nickname, now);
+        let room = Room::new(room_id, player, nickname, mode, now);
         self.rooms.insert(room_id, room);
         self.queue.push_back(room_id);
         self.player_room.insert(player, room_id);
@@ -522,6 +546,23 @@ impl BattleEngine {
             .and_then(|room| room.answers.get(&(question_index, player)))
             .cloned()
         {
+            let (mode, correct_option_id, explanation) = self
+                .rooms
+                .get(&room_id)
+                .map(|room| {
+                    let correct_option_id = room
+                        .questions
+                        .get(question_index)
+                        .map(|q| q.correct_option.clone())
+                        .unwrap_or_default();
+                    let explanation = room
+                        .questions
+                        .get(question_index)
+                        .map(|q| q.explanation.clone())
+                        .unwrap_or_default();
+                    (room.mode.clone(), correct_option_id, explanation)
+                })
+                .unwrap_or_default();
             let total_score = self
                 .rooms
                 .get(&room_id)
@@ -536,10 +577,13 @@ impl BattleEngine {
             return Ok((
                 AnswerOutcome {
                     room_id,
+                    mode,
                     question_index,
                     applied: false,
                     duplicate: true,
                     correct: record.correct,
+                    correct_option_id,
+                    explanation,
                     points: record.points,
                     speed_bonus: record.speed_bonus,
                     total_score,
@@ -627,13 +671,14 @@ impl BattleEngine {
             .get(&room_id)
             .map(Room::view)
             .ok_or_else(|| AppError::internal("room disappeared"))?;
+        let mode = room_view.mode.clone();
         let mut events = vec![EngineEvent::Score {
             room_id,
             player_id: player,
             question_index,
             correct,
-            correct_option_id,
-            explanation,
+            correct_option_id: correct_option_id.clone(),
+            explanation: explanation.clone(),
             points,
             speed_bonus,
             total_score,
@@ -655,10 +700,13 @@ impl BattleEngine {
         Ok((
             AnswerOutcome {
                 room_id,
+                mode,
                 question_index,
                 applied: true,
                 duplicate: false,
                 correct,
+                correct_option_id: correct_option_id.clone(),
+                explanation: explanation.clone(),
                 points,
                 speed_bonus,
                 total_score,
@@ -672,7 +720,6 @@ impl BattleEngine {
         let Some(room_id) = self.player_room.get(&player).copied() else {
             return Ok(Vec::new());
         };
-        let now = self.clock.now();
         let phase = self
             .rooms
             .get(&room_id)
@@ -690,21 +737,16 @@ impl BattleEngine {
         if phase == RoomPhase::Playing {
             // A browser tab navigating between the lobby and the room tears
             // down the old socket right before the new one re-joins, so a
-            // disconnect only marks presence; settle once everyone is gone.
-            let all_disconnected = {
-                let room = self
-                    .rooms
-                    .get_mut(&room_id)
-                    .ok_or_else(|| AppError::not_found("room not found"))?;
-                if let Some(state) = room.players.get_mut(&player) {
-                    state.connected = false;
-                }
-                room.players.values().all(|state| !state.connected)
-            };
-            if all_disconnected {
-                if let Some(result) = self.settle_room(room_id, now) {
-                    return Ok(vec![EngineEvent::Finished { room_id, result }]);
-                }
+            // disconnect only marks presence. The tick loop settles the room
+            // via question/total deadlines; settling immediately on an
+            // all-disconnected snapshot would race the lobby→room handoff and
+            // surface "Battle finished" the moment a player rejoins.
+            let room = self
+                .rooms
+                .get_mut(&room_id)
+                .ok_or_else(|| AppError::not_found("room not found"))?;
+            if let Some(state) = room.players.get_mut(&player) {
+                state.connected = false;
             }
             return Ok(Vec::new());
         }
@@ -1003,7 +1045,13 @@ mod tests {
         let mechanics_player = Uuid::new_v4();
         engine.rooms.insert(
             waiting_optics,
-            Room::new(waiting_optics, optics_player, "Optics".to_string(), now),
+            Room::new(
+                waiting_optics,
+                optics_player,
+                "Optics".to_string(),
+                "1v1".to_string(),
+                now,
+            ),
         );
         engine.rooms.insert(
             waiting_mechanics,
@@ -1011,6 +1059,7 @@ mod tests {
                 waiting_mechanics,
                 mechanics_player,
                 "Mechanics".to_string(),
+                "1v1".to_string(),
                 now,
             ),
         );
@@ -1177,8 +1226,8 @@ mod tests {
     }
 
     #[test]
-    fn disconnecting_both_players_settles_the_room() {
-        let (_clock, mut engine) = engine();
+    fn disconnecting_both_players_keeps_room_playing_until_deadline() {
+        let (clock, mut engine) = engine();
         let first = Uuid::new_v4();
         let second = Uuid::new_v4();
         let room_id = matched_room(&mut engine, first, second);
@@ -1188,8 +1237,20 @@ mod tests {
             engine.view(room_id).map(|room| room.phase),
             Some(RoomPhase::Playing)
         );
+        // Both players disconnect (e.g. during lobby→room navigation); the room
+        // must NOT settle immediately or a rejoin would see "finished".
         let events = engine.leave(second).expect("leave");
-        assert!(matches!(events[0], EngineEvent::Finished { .. }));
+        assert!(events.is_empty());
+        assert_eq!(
+            engine.view(room_id).map(|room| room.phase),
+            Some(RoomPhase::Playing)
+        );
+        // Settlement happens via the tick loop once the total deadline lapses.
+        clock.advance(Duration::seconds(121));
+        let events = engine.tick();
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, EngineEvent::Finished { .. })));
         let view = engine.view(room_id).expect("room view");
         assert_eq!(view.phase, RoomPhase::Finished);
     }

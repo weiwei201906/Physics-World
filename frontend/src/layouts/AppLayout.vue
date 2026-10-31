@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { RouterView, RouterLink, useRoute } from 'vue-router'
 import { t } from '@/i18n'
 import BrandMark from '@/components/BrandMark.vue'
+import LanguageToggle from '@/components/LanguageToggle.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useConfigStore } from '@/stores/config'
 
@@ -69,6 +70,7 @@ function handleLogout(): void {
         </nav>
 
         <div class="account">
+          <LanguageToggle />
           <span class="account-avatar" :title="auth.user?.nickname ?? ''">
             <img
               v-if="auth.user?.avatarUrl"

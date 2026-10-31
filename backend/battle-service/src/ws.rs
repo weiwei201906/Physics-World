@@ -83,6 +83,7 @@ pub struct AppState {
     pub clock: Arc<dyn Clock>,
     pub tokens: Arc<dyn TokenValidator>,
     pub vectors: Arc<dyn VectorSource>,
+    pub history_pool: Option<sqlx::PgPool>,
 }
 
 impl AppState {
@@ -98,6 +99,7 @@ impl AppState {
             clock,
             tokens,
             vectors: Arc::new(ZeroVectorSource),
+            history_pool: None,
         }
     }
 
@@ -106,12 +108,19 @@ impl AppState {
         self.vectors = source;
         self
     }
+
+    /// Enables the battle-history query endpoint backed by PostgreSQL.
+    pub fn with_history_pool(mut self, pool: sqlx::PgPool) -> Self {
+        self.history_pool = Some(pool);
+        self
+    }
 }
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/ws/battle", get(ws_handler))
+        .route("/api/battles/history", get(battle_history))
         .with_state(state)
 }
 
@@ -126,6 +135,119 @@ async fn health() -> Json<HealthResponse> {
         status: "ok",
         service: "battle-service",
     })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BattleHistoryEntry {
+    battle_id: Uuid,
+    mode: String,
+    question_count: i32,
+    started_at: DateTime<Utc>,
+    finished_at: DateTime<Utc>,
+    my_score: i64,
+    my_correct: i32,
+    my_rank: i32,
+    opponent_id: Option<Uuid>,
+    opponent_nickname: Option<String>,
+    opponent_score: Option<i64>,
+    opponent_correct: Option<i32>,
+    result: String,
+}
+
+/// Returns the authenticated user's battle history. Identity is injected by the
+/// gateway via the `X-User-Id` header after verifying the bearer token.
+async fn battle_history(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<BattleHistoryEntry>>> {
+    let user_id = headers
+        .get("x-user-id")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .ok_or_else(|| AppError::unauthenticated("missing user identity"))?;
+
+    let Some(pool) = state.history_pool.as_ref() else {
+        return Err(AppError::not_found("battle history is not available"));
+    };
+
+    type Row = (
+        Uuid,
+        String,
+        i32,
+        DateTime<Utc>,
+        DateTime<Utc>,
+        i64,
+        i32,
+        i32,
+        Option<Uuid>,
+        Option<String>,
+        Option<i64>,
+        Option<i32>,
+        String,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT b.battle_id, b.mode, b.question_count, b.started_at, b.finished_at, \
+                me.score AS my_score, me.correct_count AS my_correct, me.rank AS my_rank, \
+                opp.user_id AS opponent_id, \
+                COALESCE(up.nickname, au.email) AS opponent_nickname, \
+                opp.score AS opponent_score, opp.correct_count AS opponent_correct, \
+                CASE \
+                  WHEN b.winner_id = $1 THEN 'win' \
+                  WHEN b.winner_id IS NULL THEN 'draw' \
+                  ELSE 'lose' \
+                END AS result \
+         FROM battle.battles b \
+         JOIN battle.battle_participants me ON me.battle_id = b.battle_id AND me.user_id = $1 \
+         LEFT JOIN battle.battle_participants opp ON opp.battle_id = b.battle_id AND opp.user_id <> $1 \
+         LEFT JOIN app.user_profiles up ON up.user_id = opp.user_id \
+         LEFT JOIN auth.users au ON au.id = opp.user_id \
+         ORDER BY b.finished_at DESC \
+         LIMIT 50",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| AppError::upstream("postgres", error.to_string()))?;
+
+    let entries: Vec<BattleHistoryEntry> = rows
+        .into_iter()
+        .map(
+            |(
+                battle_id,
+                mode,
+                question_count,
+                started_at,
+                finished_at,
+                my_score,
+                my_correct,
+                my_rank,
+                opponent_id,
+                opponent_nickname,
+                opponent_score,
+                opponent_correct,
+                result,
+            )| {
+                BattleHistoryEntry {
+                    battle_id,
+                    mode,
+                    question_count,
+                    started_at,
+                    finished_at,
+                    my_score,
+                    my_correct,
+                    my_rank,
+                    opponent_id,
+                    opponent_nickname,
+                    opponent_score,
+                    opponent_correct,
+                    result,
+                }
+            },
+        )
+        .collect();
+
+    Ok(Json(entries))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -286,11 +408,11 @@ async fn handle_client_message(
     message: ClientMessage,
 ) -> bool {
     match message {
-        ClientMessage::FindMatch { .. } => {
+        ClientMessage::FindMatch { mode } => {
             let profile = state.vectors.profile(user_id).await;
             match state
                 .store
-                .enqueue_with_profile(user_id, profile.nickname, profile.vector)
+                .enqueue_with_profile(user_id, profile.nickname, mode, profile.vector)
                 .await
             {
                 Ok(EnqueueResult::Waiting {
@@ -374,6 +496,23 @@ async fn handle_client_message(
                 .await
             {
                 Ok(outcome) => {
+                    // In 1v1 the answer result is private: the opponent must
+                    // not learn the correct option from your submission. Send
+                    // it directly to this socket instead of broadcasting.
+                    if outcome.mode == "1v1" {
+                        let _ = send_message(
+                            socket,
+                            &ServerMessage::AnswerResult {
+                                index: outcome.question_index,
+                                correct: outcome.correct,
+                                correct_option_id: Some(outcome.correct_option_id),
+                                score: outcome.points,
+                                total_score: outcome.total_score,
+                                explanation: Some(outcome.explanation),
+                            },
+                        )
+                        .await;
+                    }
                     if outcome.phase == RoomPhase::Finished {
                         tracing::info!(room_id = %active_room, "room finished");
                     }

@@ -34,7 +34,7 @@ pub enum EnqueueResult {
 pub trait BattleStore: Send + Sync {
     /// Queues the player without an error vector; FIFO matchmaking.
     async fn enqueue(&self, player: Uuid) -> Result<EnqueueResult> {
-        self.enqueue_with_profile(player, None, PlayerVector::default())
+        self.enqueue_with_profile(player, None, None, PlayerVector::default())
             .await
     }
     async fn enqueue_with_vector(
@@ -42,12 +42,13 @@ pub trait BattleStore: Send + Sync {
         player: Uuid,
         vector: PlayerVector,
     ) -> Result<EnqueueResult> {
-        self.enqueue_with_profile(player, None, vector).await
+        self.enqueue_with_profile(player, None, None, vector).await
     }
     async fn enqueue_with_profile(
         &self,
         player: Uuid,
         nickname: Option<String>,
+        mode: Option<String>,
         vector: PlayerVector,
     ) -> Result<EnqueueResult>;
     async fn join(&self, player: Uuid, room_id: Uuid) -> Result<(RoomView, Option<QuestionView>)>;
@@ -121,6 +122,80 @@ impl Reconciler for InMemoryReconciler {
 // missing battle ids, republish, then ZREM on success. Stale entries older than
 // battle.reconcile.stale_threshold_sec only raise an alert.
 
+/// Persists settled battles directly to PostgreSQL. Used when no message broker
+/// (Kafka) is available so battle records survive restarts in local/dev.
+pub struct PgReconciler {
+    pool: sqlx::PgPool,
+}
+
+impl PgReconciler {
+    pub fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn connect(database_url: &str) -> Result<Self> {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(database_url)
+            .await
+            .map_err(|error| AppError::upstream("postgres", error.to_string()))?;
+        Ok(Self::new(pool))
+    }
+}
+
+#[async_trait]
+impl Reconciler for PgReconciler {
+    async fn record_finished(&self, result: &BattleResult) -> Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| AppError::internal(format!("begin battle tx: {error}")))?;
+        sqlx::query(
+            "INSERT INTO battle.battles \
+             (battle_id, mode, question_count, started_at, finished_at, winner_id, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, now()) \
+             ON CONFLICT (battle_id) DO NOTHING",
+        )
+        .bind(result.room_id)
+        .bind(&result.mode)
+        .bind(result.question_count as i32)
+        .bind(result.started_at)
+        .bind(result.finished_at)
+        .bind(result.winner)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| AppError::internal(format!("insert battle: {error}")))?;
+
+        for player in &result.players {
+            sqlx::query(
+                "INSERT INTO battle.battle_participants \
+                 (battle_id, user_id, score, correct_count, rank) \
+                 VALUES ($1, $2, $3, $4, $5) \
+                 ON CONFLICT (battle_id, user_id) DO NOTHING",
+            )
+            .bind(result.room_id)
+            .bind(player.player_id)
+            .bind(player.score as i64)
+            .bind(player.correct_answers as i32)
+            .bind(player.rank as i32)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| AppError::internal(format!("insert participant: {error}")))?;
+        }
+
+        tx.commit()
+            .await
+            .map_err(|error| AppError::internal(format!("commit battle tx: {error}")))?;
+        Ok(())
+    }
+
+    async fn reconcile(&self) -> Result<usize> {
+        // Direct persistence has no pending queue to flush.
+        Ok(0)
+    }
+}
+
 pub struct InMemoryBattleStore {
     engine: Mutex<BattleEngine>,
     channels: Mutex<HashMap<Uuid, broadcast::Sender<ServerMessage>>>,
@@ -184,11 +259,12 @@ impl BattleStore for InMemoryBattleStore {
         &self,
         player: Uuid,
         nickname: Option<String>,
+        mode: Option<String>,
         vector: PlayerVector,
     ) -> Result<EnqueueResult> {
         let (outcome, events) = {
             let mut engine = self.engine();
-            engine.enqueue_with_profile(player, nickname, vector)?
+            engine.enqueue_with_profile(player, nickname, mode, vector)?
         };
         let room_id = match &outcome {
             EnqueueOutcome::Waiting { room_id } => *room_id,
@@ -279,17 +355,23 @@ fn convert_events(
                 ..
             } => {
                 messages.push((room_id, room_state_message(&room)));
-                messages.push((
-                    room_id,
-                    ServerMessage::AnswerResult {
-                        index: question_index,
-                        correct,
-                        correct_option_id: Some(correct_option_id),
-                        score: points,
-                        total_score,
-                        explanation: Some(explanation),
-                    },
-                ));
+                // In 1v1 the opponent must never see your choice: the
+                // answer_result (correct option + explanation) is sent privately
+                // to the answering player by the WebSocket handler. Squad and
+                // other collaborative modes still broadcast it to the room.
+                if room.mode != "1v1" {
+                    messages.push((
+                        room_id,
+                        ServerMessage::AnswerResult {
+                            index: question_index,
+                            correct,
+                            correct_option_id: Some(correct_option_id),
+                            score: points,
+                            total_score,
+                            explanation: Some(explanation),
+                        },
+                    ));
+                }
             }
             EngineEvent::Finished { room_id, result } => {
                 finished.push(result.clone());
@@ -316,6 +398,8 @@ pub(crate) fn room_state_message(room: &RoomView) -> ServerMessage {
                 user_id: player.player_id,
                 nickname: player.nickname.clone(),
                 score: player.score,
+                rank: 0,
+                correct_count: player.correct_answers as i32,
                 connected: player.connected,
             })
             .collect(),
@@ -354,6 +438,8 @@ pub(crate) fn game_over_message(result: &BattleResult) -> ServerMessage {
                 user_id: player.player_id,
                 nickname: player.nickname.clone(),
                 score: player.score,
+                rank: player.rank as i32,
+                correct_count: player.correct_answers as i32,
                 connected: player.connected,
             })
             .collect(),

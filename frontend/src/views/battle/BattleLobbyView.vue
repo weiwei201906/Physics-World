@@ -1,23 +1,19 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { t } from '@/i18n'
-import { BATTLE_FRAME, cancelMatchFrame, findMatchFrame } from '@/api/battle'
+import { cancelMatchFrame, findMatchFrame } from '@/api/battle'
 import { useBattleWebSocket } from '@/composables/useBattleWebSocket'
+import { useBattleLobbyState } from '@/composables/useBattleLobbyState'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
 import { useConfigStore } from '@/stores/config'
 import PhysicsGlyph from '@/components/PhysicsGlyph.vue'
-import type { BattleMode } from '@/types'
 
 const router = useRouter()
 const auth = useAuthStore()
 const config = useConfigStore()
 const { showToast } = useToast()
-
-const mode = ref<BattleMode>('1v1')
-const matching = ref(false)
-const matchError = ref('')
 
 const { connected, refreshing, connect, send, onMessage, disconnect } = useBattleWebSocket(
   () => auth.accessToken,
@@ -25,29 +21,25 @@ const { connected, refreshing, connect, send, onMessage, disconnect } = useBattl
     refreshToken: () => auth.forceRefresh(),
     onRefreshFailed: () => {
       showToast(t('battle.sessionExpired'), 'error')
-      matching.value = false
       auth.degradeToLogin()
     },
     onRevoked: () => auth.handleRevoked()
   }
 )
 
-onMessage((data) => {
-  const frame = data as { type?: string; message?: string; roomId?: string }
-  if (frame.type === BATTLE_FRAME.MATCH_FOUND && frame.roomId) {
-    matching.value = false
-    void router.push({ name: 'battle-room', params: { roomId: frame.roomId } })
-    return
-  }
-  if (frame.type === BATTLE_FRAME.ERROR) {
-    matching.value = false
-    matchError.value = frame.message || t('battle.matchError')
-  }
-})
+const { phase, context, transition, selectMode, findMatch, cancel } = useBattleLobbyState(
+  send,
+  (roomId) => {
+    void router.push({ name: 'battle-room', params: { roomId } })
+  },
+  t('battle.matchError')
+)
+
+onMessage((data) => transition(data as Record<string, unknown>))
 
 watch(connected, (isConnected) => {
-  if (isConnected && matching.value) {
-    send(findMatchFrame(mode.value))
+  if (isConnected && phase.value === 'matching') {
+    send(findMatchFrame(context.mode))
   }
 })
 
@@ -56,28 +48,21 @@ onMounted(() => {
   connect()
 })
 
-function findMatch(): void {
-  if (matching.value) return
-  matchError.value = ''
-  matching.value = true
+function onFindMatch(): void {
+  const frame = findMatchFrame(context.mode)
   if (connected.value) {
-    send(findMatchFrame(mode.value))
+    findMatch(frame)
   } else {
+    // Transition to matching optimistically so the reconnect watcher resends
+    // find_match once the socket opens.
+    findMatch(frame)
     connect()
   }
 }
 
-function cancelMatch(): void {
-  matching.value = false
-  if (connected.value) {
-    send(cancelMatchFrame())
-  }
+function onCancelMatch(): void {
+  cancel(cancelMatchFrame())
   disconnect()
-}
-
-function selectMode(next: BattleMode): void {
-  if (matching.value) return
-  mode.value = next
 }
 </script>
 
@@ -105,8 +90,8 @@ function selectMode(next: BattleMode): void {
           <button
             type="button"
             class="mode-option"
-            :class="{ 'mode-option--active': mode === '1v1' }"
-            :aria-pressed="mode === '1v1'"
+            :class="{ 'mode-option--active': context.mode === '1v1' }"
+            :aria-pressed="context.mode === '1v1'"
             @click="selectMode('1v1')"
           >
             <span class="mode-name">{{ t('battle.mode1v1') }}</span>
@@ -115,8 +100,8 @@ function selectMode(next: BattleMode): void {
           <button
             type="button"
             class="mode-option"
-            :class="{ 'mode-option--active': mode === 'squad' }"
-            :aria-pressed="mode === 'squad'"
+            :class="{ 'mode-option--active': context.mode === 'squad' }"
+            :aria-pressed="context.mode === 'squad'"
             @click="selectMode('squad')"
           >
             <span class="mode-name">{{ t('battle.squad') }}</span>
@@ -125,13 +110,13 @@ function selectMode(next: BattleMode): void {
         </div>
 
         <div class="lobby-actions">
-          <button v-if="!matching" class="btn btn-accent btn-lg" @click="findMatch">
+          <button v-if="phase === 'idle' || phase === 'error'" class="btn btn-accent btn-lg" @click="onFindMatch">
             {{ t('battle.find') }}
           </button>
-          <button v-else class="btn btn-secondary btn-lg" @click="cancelMatch">
+          <button v-else-if="phase === 'matching'" class="btn btn-secondary btn-lg" @click="onCancelMatch">
             {{ t('battle.cancel') }}
           </button>
-          <p v-if="matching" class="match-state" role="status">
+          <p v-if="phase === 'matching'" class="match-state" role="status">
             <span class="pulse" aria-hidden="true" />
             {{ t('battle.finding') }}
           </p>
@@ -154,14 +139,14 @@ function selectMode(next: BattleMode): void {
           </div>
           <div class="aside-row">
             <span class="label">{{ t('battle.matchMode') }}</span>
-            <span class="aside-value">{{ mode === '1v1' ? t('battle.mode1v1') : t('battle.squad') }}</span>
+            <span class="aside-value">{{ context.mode === '1v1' ? t('battle.mode1v1') : t('battle.squad') }}</span>
           </div>
         </div>
         <p class="aside-note">{{ t('battle.cancelHint') }}</p>
       </aside>
     </div>
 
-    <p v-if="matchError" class="form-error" role="alert">{{ matchError }}</p>
+    <p v-if="phase === 'error'" class="form-error" role="alert">{{ context.errorMessage }}</p>
   </div>
 </template>
 

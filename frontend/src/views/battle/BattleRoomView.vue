@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useBattleWebSocket } from '@/composables/useBattleWebSocket'
-import { answerFrame, BATTLE_FRAME, joinRoomFrame } from '@/api/battle'
+import { useBattleRoomState } from '@/composables/useBattleRoomState'
+import { joinRoomFrame } from '@/api/battle'
+import { t } from '@/i18n'
 
 const props = defineProps<{ roomId: string }>()
 const router = useRouter()
@@ -13,11 +15,41 @@ const { connected, connect, send, onMessage, disconnect } = useBattleWebSocket(
   () => auth.accessToken
 )
 
-const status = ref<'waiting' | 'playing' | 'finished'>('waiting')
-const players = ref<Array<{ userId: string; nickname: string; score: number }>>([])
-const currentQuestion = ref<{ stem: string; options: Array<{ id: string; text: string }> } | null>(null)
-const selectedAnswer = ref<string | null>(null)
-const questionIndex = ref(0)
+// All battle UI state and transitions live in the state machine. The view only
+// renders `phase` + `context` and forwards user input to `submit`.
+const { phase, context, transition, submit, confirmEnd, answeredForIndex } = useBattleRoomState(send)
+
+const myUserId = computed(() => auth.user?.id ?? '')
+
+const battleOutcome = computed<'win' | 'lose' | 'draw'>(() => {
+  if (!context.winnerId) return 'draw'
+  return context.winnerId === myUserId.value ? 'win' : 'lose'
+})
+
+const sortedPlayers = computed(() =>
+  [...context.players].sort((a, b) => a.rank - b.rank || b.score - a.score)
+)
+
+function outcomeLabel(): string {
+  switch (battleOutcome.value) {
+    case 'win':
+      return t('battle.resultWin')
+    case 'lose':
+      return t('battle.resultLose')
+    default:
+      return t('battle.resultDraw')
+  }
+}
+
+function optionClass(optionId: string): string {
+  const result = answeredForIndex.value
+  if (!result) {
+    return context.selectedAnswer === optionId ? 'option--selected' : ''
+  }
+  if (optionId === result.correctOptionId) return 'option--correct'
+  if (optionId === context.selectedAnswer && !result.correct) return 'option--wrong'
+  return ''
+}
 
 watch(connected, (isConnected) => {
   if (isConnected) {
@@ -26,32 +58,13 @@ watch(connected, (isConnected) => {
 })
 
 onMounted(() => {
-  onMessage((data) => {
-    const msg = data as Record<string, unknown>
-    if (msg.type === BATTLE_FRAME.ROOM_STATE) {
-      players.value = msg.players as typeof players.value
-      status.value = msg.status as typeof status.value
-    }
-    if (msg.type === BATTLE_FRAME.QUESTION) {
-      questionIndex.value = msg.index as number
-      currentQuestion.value = msg.question as typeof currentQuestion.value
-      status.value = 'playing'
-    }
-    if (msg.type === BATTLE_FRAME.GAME_OVER) {
-      status.value = 'finished'
-    }
-  })
+  onMessage((data) => transition(data as Record<string, unknown>))
   connect()
 })
 
 onUnmounted(() => {
   disconnect()
 })
-
-function submit(optionId: string): void {
-  selectedAnswer.value = optionId
-  send(answerFrame(questionIndex.value, optionId))
-}
 
 function leave(): void {
   void router.push({ name: 'battle' })
@@ -61,42 +74,98 @@ function leave(): void {
 <template>
   <div class="battle-room">
     <header class="room-head">
-      <span class="room-id">Room {{ roomId }}</span>
+      <span class="room-id">{{ t('battle.room', { id: roomId }) }}</span>
       <span class="conn" :class="{ 'conn--ok': connected }">
-        {{ connected ? 'Connected' : 'Reconnecting...' }}
+        {{ connected ? t('battle.connected') : t('battle.connectionLost') }}
       </span>
     </header>
 
     <section class="players">
-      <div v-for="p in players" :key="p.userId" class="player">
+      <div v-for="p in context.players" :key="p.userId" class="player">
         <span class="player-name">{{ p.nickname }}</span>
         <span class="player-score">{{ p.score }}</span>
+        <span v-if="p.correctCount != null" class="player-correct">
+          {{ t('battle.correctShort', { count: p.correctCount }) }}
+        </span>
       </div>
     </section>
 
-    <div v-if="status === 'waiting'" class="state">
-      Waiting for an opponent...
+    <div v-if="phase === 'waiting'" class="state">
+      {{ t('battle.waiting') }}
     </div>
 
-    <div v-else-if="status === 'playing' && currentQuestion" class="question-block">
-      <p class="stem">{{ currentQuestion.stem }}</p>
-      <div class="options">
+    <div v-else-if="phase === 'answering' || phase === 'revealed'" class="question-block">
+      <p v-if="context.currentQuestion" class="stem">{{ context.currentQuestion.stem }}</p>
+      <div v-if="context.currentQuestion" class="options">
         <button
-          v-for="opt in currentQuestion.options"
+          v-for="opt in context.currentQuestion.options"
           :key="opt.id"
           class="option"
-          :class="{ 'option--selected': selectedAnswer === opt.id }"
-          :disabled="!!selectedAnswer"
+          :class="optionClass(opt.id)"
+          :disabled="!!context.selectedAnswer"
           @click="submit(opt.id)"
         >
           {{ opt.text }}
         </button>
       </div>
+      <div
+        v-if="answeredForIndex"
+        class="feedback"
+        :class="answeredForIndex.correct ? 'feedback--correct' : 'feedback--wrong'"
+      >
+        <p v-if="answeredForIndex.correct">
+          {{ t('battle.answerCorrect', { score: answeredForIndex.score }) }}
+        </p>
+        <p v-else>
+          {{ t('battle.answerWrong', { score: answeredForIndex.score }) }}
+        </p>
+        <p
+          v-if="!answeredForIndex.correct && answeredForIndex.correctOptionId"
+          class="feedback-correct"
+        >
+          {{ t('quiz.correctAnswer', { label: answeredForIndex.correctOptionId }) }}
+        </p>
+        <p v-if="answeredForIndex.explanation" class="feedback-explanation">
+          {{ t('quiz.explanation') }}：{{ answeredForIndex.explanation }}
+        </p>
+      </div>
+      <button
+        v-if="context.pendingFinish"
+        class="btn btn-primary"
+        @click="confirmEnd"
+      >
+        {{ t('battle.endBattle') }}
+      </button>
     </div>
 
-    <div v-else-if="status === 'finished'" class="state">
-      Battle finished.
-      <button class="btn btn-primary" @click="leave">Back to lobby</button>
+    <div v-else-if="phase === 'finished'" class="state">
+      <h2 class="outcome" :class="`outcome--${battleOutcome}`">{{ outcomeLabel() }}</h2>
+      <table class="summary">
+        <thead>
+          <tr>
+            <th>{{ t('battle.rank') }}</th>
+            <th>{{ t('battle.players') }}</th>
+            <th>{{ t('battle.score') }}</th>
+            <th>{{ t('battle.correctCount') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="p in sortedPlayers"
+            :key="p.userId"
+            :class="{ 'row--me': p.userId === myUserId }"
+          >
+            <td>{{ p.rank }}</td>
+            <td>
+              {{ p.nickname }}
+              <span v-if="p.userId === myUserId" class="me-tag">({{ t('battle.you') }})</span>
+            </td>
+            <td>{{ p.score }}</td>
+            <td>{{ p.correctCount }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <button class="btn btn-primary" @click="leave">{{ t('battle.backToLobby') }}</button>
     </div>
   </div>
 </template>
@@ -195,5 +264,75 @@ function leave(): void {
 .option--selected {
   border-color: var(--color-primary-600);
   background-color: var(--color-primary-50);
+}
+
+.option--correct {
+  border-color: var(--color-correct);
+  background-color: var(--color-correct-bg, #e8f5e9);
+}
+
+.option--wrong {
+  border-color: var(--color-wrong, #d32f2f);
+  background-color: var(--color-wrong-bg, #ffebee);
+}
+
+.feedback {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.feedback--correct {
+  background-color: var(--color-correct-bg, #e8f5e9);
+  color: var(--color-correct, #2e7d32);
+}
+.feedback--wrong {
+  background-color: var(--color-wrong-bg, #ffebee);
+  color: var(--color-wrong, #c62828);
+}
+.feedback-correct {
+  margin: var(--space-1) 0 0;
+  font-weight: 600;
+}
+.feedback-explanation {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text);
+}
+
+.player-correct {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.outcome {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+}
+.outcome--win { color: var(--color-correct, #2e7d32); }
+.outcome--lose { color: var(--color-wrong, #c62828); }
+.outcome--draw { color: var(--color-text-muted); }
+
+.summary {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.summary th,
+.summary td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+.summary th {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+.row--me {
+  background-color: var(--color-primary-50, #eef2ff);
+}
+.me-tag {
+  color: var(--color-primary-600);
+  font-weight: 600;
 }
 </style>

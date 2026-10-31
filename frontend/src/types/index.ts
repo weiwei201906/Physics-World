@@ -184,6 +184,8 @@ export interface BattlePlayer {
   userId: string
   nickname: string
   score: number
+  rank: number
+  correctCount: number
   connected: boolean
 }
 
@@ -195,11 +197,17 @@ export interface BattleRoomState {
   totalQuestions: number
 }
 
+export interface BattleQuestionBody {
+  id: string
+  stem: string
+  options: Array<{ id: string; text: string }>
+}
+
 export interface BattleQuestionFrame {
   index: number
   total: number
   seconds: number | null
-  question: Question
+  question: BattleQuestionBody
 }
 
 export interface BattleAnswerResult {
@@ -215,4 +223,22 @@ export interface BattleGameOver {
   winnerId: string | null
   players: BattlePlayer[]
   finalScore: number
+}
+
+export type BattleResultTag = 'win' | 'lose' | 'draw'
+
+export interface BattleHistoryEntry {
+  battleId: string
+  mode: string
+  questionCount: number
+  startedAt: string
+  finishedAt: string
+  myScore: number
+  myCorrect: number
+  myRank: number
+  opponentId: string | null
+  opponentNickname: string | null
+  opponentScore: number | null
+  opponentCorrect: number | null
+  result: BattleResultTag
 }

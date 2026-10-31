@@ -1,14 +1,50 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useProfileStore } from '@/stores/profile'
 import { useAuthStore } from '@/stores/auth'
+import { getBattleHistory } from '@/api/battle'
+import { t } from '@/i18n'
+import type { BattleHistoryEntry, BattleResultTag } from '@/types'
 
 const profile = useProfileStore()
 const auth = useAuthStore()
 
+const history = ref<BattleHistoryEntry[]>([])
+const historyLoading = ref(false)
+const historyError = ref(false)
+
 onMounted(() => {
   void profile.loadSummary()
+  void loadHistory()
 })
+
+async function loadHistory(): Promise<void> {
+  historyLoading.value = true
+  historyError.value = false
+  try {
+    history.value = await getBattleHistory()
+  } catch {
+    historyError.value = true
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+function resultLabel(result: BattleResultTag): string {
+  switch (result) {
+    case 'win':
+      return t('battle.resultWin')
+    case 'lose':
+      return t('battle.resultLose')
+    default:
+      return t('battle.resultDraw')
+  }
+}
+
+function formatTime(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
+}
 </script>
 
 <template>
@@ -48,6 +84,28 @@ onMounted(() => {
           </div>
           <div class="strength-bar">
             <div class="strength-fill" :style="{ width: `${s.strength * 100}%` }" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="battle-history">
+      <h2>{{ t('profile.battleHistory') }}</h2>
+      <div v-if="historyLoading" class="loading">{{ t('profile.battleLoading') }}</div>
+      <div v-else-if="historyError" class="empty">{{ t('profile.battleError') }}</div>
+      <div v-else-if="!history.length" class="empty">{{ t('profile.noBattles') }}</div>
+      <div v-else class="history-list">
+        <div v-for="entry in history" :key="entry.battleId" class="history-item">
+          <div class="history-head">
+            <span class="result" :class="`result--${entry.result}`">{{ resultLabel(entry.result) }}</span>
+            <span class="history-mode">{{ entry.mode }}</span>
+            <span class="history-time">{{ formatTime(entry.finishedAt) }}</span>
+          </div>
+          <div class="history-scores">
+            <span class="score-me">{{ t('battle.you') }}: {{ entry.myScore }} ({{ entry.myCorrect }}/{{ entry.questionCount }})</span>
+            <span v-if="entry.opponentNickname" class="score-opp">
+              {{ entry.opponentNickname }}: {{ entry.opponentScore }} ({{ entry.opponentCorrect }}/{{ entry.questionCount }})
+            </span>
           </div>
         </div>
       </div>
@@ -167,5 +225,65 @@ onMounted(() => {
   background-color: var(--color-primary-600);
   border-radius: 3px;
   transition: width var(--duration-base) var(--ease-out);
+}
+
+.battle-history h2 {
+  margin-bottom: var(--space-4);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.history-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.result {
+  font-weight: 600;
+}
+.result--win { color: var(--color-correct, #2e7d32); }
+.result--lose { color: var(--color-wrong, #c62828); }
+.result--draw { color: var(--color-text-muted); }
+
+.history-mode {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.history-time {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--color-text-faint);
+}
+
+.history-scores {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.score-me {
+  color: var(--color-primary-700);
+  font-weight: 500;
+}
+
+.score-opp {
+  color: var(--color-text-muted);
 }
 </style>

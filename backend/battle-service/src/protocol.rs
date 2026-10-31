@@ -45,6 +45,10 @@ pub struct BattlePlayerView {
     pub user_id: Uuid,
     pub nickname: String,
     pub score: i32,
+    #[serde(default)]
+    pub rank: i32,
+    #[serde(default)]
+    pub correct_count: i32,
     pub connected: bool,
 }
 
