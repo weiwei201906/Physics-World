@@ -1,0 +1,37 @@
+# Minimal Blade configuration for the question-bank package.
+#
+# Production / CI builds are expected to run from the repository root with a
+# Tencent Flare checkout placed at //flare (for example
+# `git clone https://github.com/Tencent/flare.git flare`) and a gRPC wrapper
+# exposed at //thirdparty/grpc.  This file only pins the package-local
+# compiler / test defaults; it is not a replacement for Flare's own
+# BLADE_ROOT, which must be in effect when //flare/* labels are resolved.
+#
+# Local developer validation does not use Blade at all (Flare is not installed
+# here); see local_build.sh.
+
+global_config(
+  duplicated_source_action='error',
+  test_timeout=120,
+)
+
+cc_config(
+  cxxflags=['-std=c++20'],
+  warnings=[
+    '-Wall',
+    '-Wextra',
+    '-Wno-unused-parameter',
+  ],
+)
+
+# Flare's documented BUILD style derives gtest / gtest_main from the workspace
+# configuration.  Keep the same labels used by //flare.
+cc_test_config(
+  gtest_libs=['//thirdparty/googletest:gtest'],
+  gtest_main_libs=['//thirdparty/googletest:gtest_main'],
+)
+
+proto_library_config(
+  protoc='protoc',
+  protobuf_libs=['//thirdparty/protobuf:protobuf'],
+)
