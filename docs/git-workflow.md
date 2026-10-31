@@ -11,9 +11,9 @@
 | `chore/<topic>` | 构建、CI、依赖、脚手架 | `develop` | `develop` |
 | `docs/<topic>` | 文档 | `develop` | `develop` |
 
-`scope` 取值：`frontend`、`backend-rust`、`backend-cpp`、`contracts`、`gateway`、`repo`、`deploy`。
+`scope` 取值：`frontend`、`auth`、`user-api`、`sse`、`recommendation`、`battle`、`consumer`、`qbank`、`shared`、`contracts`、`gateway`、`repo`、`deploy`。
 
-分支命名示例：`feat/frontend-brand-i18n`、`feat/backend-rust-auth`、`feat/backend-cpp-qbank-cache`。
+分支命名示例：`feat/frontend-brand-i18n`、`feat/backend-core-services`、`feat/backend-question-bank`。
 
 ## 2. 多智能体并行
 

@@ -10,8 +10,18 @@
 Physics-World/
 ├── frontend/                 # Vue 3 + Vite + Pinia + Vitest
 ├── backend/
-│   ├── rust/                 # Cargo workspace，多服务 crate
-│   ├── cpp/                  # question-bank：Blade + Flare + gRPC
+│   ├── Cargo.toml            # Rust workspace（按微服务划分，不按语言分目录）
+│   ├── common/               # 共享 config/error/telemetry/identity
+│   ├── auth-service/         # Rust + Axum
+│   ├── user-api/             # Rust + async-graphql
+│   ├── user-api-sse/         # Rust + SSE
+│   ├── recommendation-service/
+│   ├── battle-service/       # Rust + WebSocket
+│   ├── attempt-consumer/     # Kafka consumer
+│   ├── battle-result-consumer/
+│   ├── profile-bootstrap-consumer/
+│   ├── qbank-client/         # Rust gRPC 客户端
+│   ├── question-bank/        # C++20 + Tencent Flare + Blade
 │   ├── gateway/              # Ingress-Nginx + OpenResty Lua
 │   ├── config/               # 动态配置默认值（按 namespace）
 │   ├── migrations/           # PostgreSQL schema / migration
@@ -31,9 +41,9 @@ Physics-World/
 多智能体通过 Git worktree 隔离：
 
 ```bash
-git worktree add .worktrees/frontend      -b feat/frontend-brand-i18n   develop
-git worktree add .worktrees/backend-rust  -b feat/backend-rust-scaffold develop
-git worktree add .worktrees/backend-cpp   -b feat/backend-cpp-scaffold  develop
+git worktree add .worktrees/frontend       -b feat/frontend-brand-i18n       develop
+git worktree add .worktrees/backend-core   -b feat/backend-core-services     develop
+git worktree add .worktrees/question-bank  -b feat/backend-question-bank     develop
 ```
 
 每个智能体只在自己 worktree 内提交；合并前必须由独立 review 智能体审查。
@@ -42,8 +52,8 @@ git worktree add .worktrees/backend-cpp   -b feat/backend-cpp-scaffold  develop
 
 ```bash
 cd frontend && npm ci && npm run type-check && npm run lint:check && npm test
-cd backend/rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo nextest run
-cd backend/cpp && blade test //question-bank/...
+cd backend && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo nextest run
+cd backend/question-bank && blade test //...
 ```
 
-> 当前 WSL 工具链尚未安装，后端构建与测试命令在工具链就绪后执行；前端测试需要 Linux 版 Node.js。
+> 当前 Linux 环境已具备 g++ 15 / clang 21 / cmake 4 / protoc 3.21；Node.js、Rust 默认工具链与 Blade 尚未就绪，对应构建与测试命令待安装后执行。运行 cmake/clang/protoc 前需清除 Trae 注入的 `LD_LIBRARY_PATH` 与 `LD_PRELOAD`。

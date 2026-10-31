@@ -7,14 +7,14 @@ frontend/.vite/
 *.tsbuildinfo
 *.local
 
-# Rust
-backend/rust/target/
+# Rust workspace
+backend/target/
 **/*.rs.bk
 
 # C++ / Blade
-backend/cpp/build/
-backend/cpp/blade-bin/
-backend/cpp/.blade/
+backend/question-bank/build/
+backend/question-bank/blade-bin/
+backend/question-bank/.blade/
 *.o
 *.a
 *.so
