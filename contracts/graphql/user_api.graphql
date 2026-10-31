@@ -1,0 +1,208 @@
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+scalar DateTime
+scalar UUID
+
+enum QuizMode {
+  PRACTICE
+  EXAM
+  CHAPTER
+}
+
+enum Period {
+  DAILY
+  WEEKLY
+  ALL
+}
+
+enum SessionStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+}
+
+type User {
+  id: UUID!
+  email: String!
+  nickname: String!
+  avatarUrl: String
+  roles: [String!]!
+  createdAt: DateTime!
+}
+
+type Option {
+  id: ID!
+  label: String!
+  text: String!
+}
+
+type QuestionContent {
+  stem: String!
+  imageUrl: String
+  explanation: String
+  options: [Option!]!
+}
+
+type Question {
+  id: ID!
+  chapterId: String!
+  difficulty: Int!
+  content: QuestionContent!
+}
+
+type Chapter {
+  id: ID!
+  name: String!
+  questionCount: Int!
+}
+
+type QuizSession {
+  id: UUID!
+  mode: QuizMode!
+  chapterId: String
+  status: SessionStatus!
+  currentIndex: Int!
+  totalQuestions: Int!
+  startedAt: DateTime!
+  completedAt: DateTime
+}
+
+type SubmitAttemptPayload {
+  accepted: Boolean!
+  attemptId: UUID!
+  correct: Boolean!
+  correctOptionId: ID
+  explanation: String
+}
+
+type LeaderboardEntry {
+  rank: Int!
+  userId: UUID!
+  nickname: String!
+  avatarUrl: String
+  score: Int!
+}
+
+type LeaderboardPage {
+  entries: [LeaderboardEntry!]!
+  period: Period!
+  page: Int!
+  pageSize: Int!
+  total: Int!
+}
+
+type RankSummary {
+  period: Period!
+  rank: Int
+  score: Int!
+}
+
+type ConfigEntry {
+  namespace: String!
+  key: String!
+  value: String!
+  updatedAt: DateTime!
+}
+
+type ConfigMutationPayload {
+  applied: Boolean!
+  degraded: Boolean!
+  entry: ConfigEntry
+  errorMessage: String
+}
+
+type ConfigSchemaEntry {
+  namespace: String!
+  key: String!
+  type: String!
+  required: Boolean!
+  defaultValue: String
+  description: String
+}
+
+type ConfigAuditEntry {
+  id: ID!
+  namespace: String!
+  key: String!
+  oldValue: String
+  newValue: String
+  changedBy: UUID
+  changedAt: DateTime!
+}
+
+type QuestionVersion {
+  id: ID!
+  questionId: ID!
+  version: Int!
+  deletedAt: DateTime
+  createdAt: DateTime!
+}
+
+input SubmitAttemptInput {
+  sessionId: UUID!
+  questionId: ID!
+  answer: String!
+}
+
+input UpdateProfileInput {
+  nickname: String
+  avatarUrl: String
+}
+
+input ConfigSchemaInput {
+  namespace: String!
+  key: String!
+  type: String!
+  required: Boolean!
+  defaultValue: String
+  description: String
+}
+
+input OptionInput {
+  id: ID!
+  label: String!
+  text: String!
+}
+
+input QuestionContentInput {
+  stem: String!
+  imageUrl: String
+  explanation: String
+  options: [OptionInput!]!
+  correctOptionId: ID!
+}
+
+input QuestionUploadInput {
+  chapterId: String!
+  difficulty: Int!
+  content: QuestionContentInput!
+}
+
+type Query {
+  me: User!
+  chapters: [Chapter!]!
+  quizSession(id: UUID!): QuizSession
+  sessionQuestion(sessionId: UUID!, index: Int!): Question
+  leaderboard(period: Period!, page: Int!, size: Int!): LeaderboardPage!
+  myRank(period: Period!): RankSummary!
+  adminConfigs(namespace: String!): [ConfigEntry!]!
+  adminConfigSchemas(namespace: String): [ConfigSchemaEntry!]!
+  adminConfigHistory(namespace: String!, key: String!, limit: Int!): [ConfigAuditEntry!]!
+  adminQuestionVersions(questionId: ID!): [QuestionVersion!]!
+}
+
+type Mutation {
+  startQuizSession(mode: QuizMode!, chapterId: ID): QuizSession!
+  submitAttempt(input: SubmitAttemptInput!): SubmitAttemptPayload!
+  updateProfile(input: UpdateProfileInput!): User!
+  adminUpsertConfig(namespace: String!, key: String!, value: String!): ConfigMutationPayload!
+  adminDeleteConfig(namespace: String!, key: String!): ConfigMutationPayload!
+  adminRegisterConfigSchema(input: ConfigSchemaInput!): ConfigSchemaEntry!
+  adminRollbackConfig(namespace: String!, key: String!, version: Int!): ConfigMutationPayload!
+  adminUploadQuestion(input: QuestionUploadInput!): QuestionVersion!
+  adminUpdateQuestion(questionId: ID!, input: QuestionUploadInput!): QuestionVersion!
+  adminSoftDeleteQuestion(questionId: ID!): Boolean!
+}

@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package qbank.v1;
+
+option cc_enable_arenas = true;
+
+message GetQuestionRequest {
+  string question_id = 1;
+}
+
+message QuestionOption {
+  string id = 1;
+  string label = 2;
+  string text = 3;
+}
+
+message QuestionContent {
+  string stem = 1;
+  string image_url = 2;
+  string explanation = 3;
+  repeated QuestionOption options = 4;
+}
+
+message Question {
+  string id = 1;
+  string chapter_id = 2;
+  int32 difficulty = 3;
+  QuestionContent content = 4;
+}
+
+message GetQuestionResponse {
+  Question question = 1;
+}
+
+message BatchGetQuestionsRequest {
+  repeated string question_ids = 1;
+}
+
+message BatchGetQuestionsResponse {
+  repeated Question questions = 1;
+}
+
+message GetChapterQuestionsRequest {
+  string chapter_id = 1;
+  int32 limit = 2;
+}
+
+message GetQuestionMetaRequest {
+  repeated string question_ids = 1;
+}
+
+message QuestionMeta {
+  string id = 1;
+  string chapter_id = 2;
+  int32 difficulty = 3;
+  int64 updated_at_epoch_ms = 4;
+}
+
+message GetQuestionMetaResponse {
+  repeated QuestionMeta metas = 1;
+}
+
+message GetRandomQuestionsRequest {
+  string chapter_id = 1;
+  int32 count = 2;
+}
+
+message GetRandomQuestionsResponse {
+  repeated Question questions = 1;
+}
+
+service QuestionBank {
+  rpc GetQuestion(GetQuestionRequest) returns (GetQuestionResponse);
+  rpc BatchGetQuestions(BatchGetQuestionsRequest) returns (BatchGetQuestionsResponse);
+  rpc GetChapterQuestions(GetChapterQuestionsRequest) returns (stream Question);
+  rpc GetQuestionMeta(GetQuestionMetaRequest) returns (GetQuestionMetaResponse);
+  rpc GetRandomQuestions(GetRandomQuestionsRequest) returns (GetRandomQuestionsResponse);
+}

@@ -1,0 +1,47 @@
+scalar DateTime
+scalar UUID
+
+enum QuizMode {
+  PRACTICE
+  EXAM
+  CHAPTER
+}
+
+type Option {
+  id: ID!
+  label: String!
+  text: String!
+}
+
+type QuestionContent {
+  stem: String!
+  imageUrl: String
+  explanation: String
+  options: [Option!]!
+}
+
+type Question {
+  id: ID!
+  chapterId: String!
+  difficulty: Int!
+  content: QuestionContent!
+}
+
+type ChapterStrength {
+  chapterId: String!
+  chapterName: String!
+  strength: Float!
+  questionCount: Int!
+}
+
+type ProfileSummary {
+  userId: UUID!
+  totalAttempts: Int!
+  correctRate: Float!
+  chapterStrengths: [ChapterStrength!]!
+}
+
+type Query {
+  recommendQuestions(chapterId: ID, count: Int): [Question!]!
+  userProfileSummary: ProfileSummary!
+}

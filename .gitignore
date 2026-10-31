@@ -1,42 +1,48 @@
-# Dependencies
-node_modules
-.pnp
-.pnp.js
-
-# Build output
-dist
-dist-ssr
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/coverage/
+frontend/.vite/
+*.tsbuildinfo
 *.local
 
-# Environment
-.env
-.env.local
-.env.*.local
+# Rust
+backend/rust/target/
+**/*.rs.bk
 
-# Editor
+# C++ / Blade
+backend/cpp/build/
+backend/cpp/blade-bin/
+backend/cpp/.blade/
+*.o
+*.a
+*.so
+*.dylib
+
+# Python tooling
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Parallel agent worktrees
+.worktrees/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Editors and OS
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+*.swp
 
-# Logs
-logs
+# Logs and temp
+logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Test
-coverage
-.nyc_output
-
-# Cache
-.cache
-.temp
-*.tsbuildinfo
+.cache/
+.temp/

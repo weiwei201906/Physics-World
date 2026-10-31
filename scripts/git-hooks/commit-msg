@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+message_file="$1"
+first_line="$(head -n 1 "$message_file")"
+
+if ! printf '%s' "$first_line" | LC_ALL=C grep -qE \
+  '^(feat|fix|refactor|test|docs|chore|build|ci|perf)(\([a-z0-9-]+\))?: .+$'; then
+  echo "commit-msg: use Conventional Commits, e.g. feat(frontend): add quiz timer" >&2
+  exit 1
+fi
+
+if LC_ALL=C grep -n '[^[:print:][:space:]]' "$message_file" >/dev/null 2>&1; then
+  echo "commit-msg: commit message must contain ASCII characters only" >&2
+  exit 1
+fi
+
+if ! LC_ALL=C grep -q '.' "$message_file"; then
+  echo "commit-msg: empty commit message" >&2
+  exit 1
+fi
