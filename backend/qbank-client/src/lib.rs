@@ -22,11 +22,27 @@ pub struct QuestionOption {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct QuestionMedia {
+    pub url: String,
+    pub alt: String,
+    #[serde(default)]
+    pub variant: String,
+    #[serde(default)]
+    pub width: i32,
+    #[serde(default)]
+    pub height: i32,
+    #[serde(default)]
+    pub mime: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct QuestionContent {
     pub stem: String,
     pub image_url: String,
     pub explanation: String,
     pub options: Vec<QuestionOption>,
+    #[serde(default)]
+    pub media: Vec<QuestionMedia>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -65,6 +81,32 @@ impl From<QuestionOption> for qbank::QuestionOption {
     }
 }
 
+impl From<qbank::QuestionMedia> for QuestionMedia {
+    fn from(value: qbank::QuestionMedia) -> Self {
+        Self {
+            url: value.url,
+            alt: value.alt,
+            variant: value.variant,
+            width: value.width,
+            height: value.height,
+            mime: value.mime,
+        }
+    }
+}
+
+impl From<QuestionMedia> for qbank::QuestionMedia {
+    fn from(value: QuestionMedia) -> Self {
+        Self {
+            url: value.url,
+            alt: value.alt,
+            variant: value.variant,
+            width: value.width,
+            height: value.height,
+            mime: value.mime,
+        }
+    }
+}
+
 impl From<qbank::QuestionContent> for QuestionContent {
     fn from(value: qbank::QuestionContent) -> Self {
         Self {
@@ -72,6 +114,7 @@ impl From<qbank::QuestionContent> for QuestionContent {
             image_url: value.image_url,
             explanation: value.explanation,
             options: value.options.into_iter().map(Into::into).collect(),
+            media: value.media.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -83,6 +126,7 @@ impl From<QuestionContent> for qbank::QuestionContent {
             image_url: value.image_url,
             explanation: value.explanation,
             options: value.options.into_iter().map(Into::into).collect(),
+            media: value.media.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -206,6 +250,8 @@ impl QuestionBank for QbankClient {
             .get_chapter_questions(qbank::GetChapterQuestionsRequest {
                 chapter_id: chapter_id.to_owned(),
                 limit,
+                user_id: String::new(),
+                exclude_question_ids: Vec::new(),
             })
             .await
             .map_err(map_status)?
@@ -293,6 +339,7 @@ impl InMemoryQuestionBank {
                                 text: "Option B".to_owned(),
                             },
                         ],
+                        media: Vec::new(),
                     }),
                 });
             }
@@ -406,6 +453,14 @@ mod tests {
                     label: "A".to_owned(),
                     text: "5 m/s".to_owned(),
                 }],
+                media: vec![qbank::QuestionMedia {
+                    url: "https://example.test/ramp.svg".to_owned(),
+                    alt: "Ramp diagram".to_owned(),
+                    variant: "default".to_owned(),
+                    width: 640,
+                    height: 480,
+                    mime: "image/svg+xml".to_owned(),
+                }],
             }),
         }
     }
@@ -419,6 +474,8 @@ mod tests {
         assert_eq!(dto.difficulty, 2);
         let content = dto.content.as_ref().expect("content");
         assert_eq!(content.options.len(), 1);
+        assert_eq!(content.media.len(), 1);
+        assert_eq!(content.media[0].variant, "default");
 
         let back: qbank::Question = dto.into();
         assert_eq!(back, proto);
