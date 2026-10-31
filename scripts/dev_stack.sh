@@ -152,12 +152,29 @@ pid $NGINX_DIR/nginx.pid;
 error_log $NGINX_DIR/logs/error.log warn;
 events { worker_connections 1024; }
 http {
+    default_type application/octet-stream;
     access_log $NGINX_DIR/logs/access.log;
     client_body_temp_path $NGINX_DIR/tmp/body;
     proxy_temp_path $NGINX_DIR/tmp/proxy;
     fastcgi_temp_path $NGINX_DIR/tmp/fastcgi;
     uwsgi_temp_path $NGINX_DIR/tmp/uwsgi;
     scgi_temp_path $NGINX_DIR/tmp/scgi;
+    # The extracted nginx package ships no mime.types, so declare the
+    # extensions the frontend build emits explicitly.
+    types {
+        text/html html;
+        text/css css;
+        application/javascript js mjs;
+        application/json json;
+        image/svg+xml svg svgz;
+        image/png png;
+        image/jpeg jpg jpeg;
+        image/gif gif;
+        image/x-icon ico;
+        font/woff2 woff2;
+        font/woff woff;
+        text/plain txt;
+    }
     include $NGINX_SERVER_CONF;
 }
 EOF
