@@ -11,7 +11,19 @@ vi.mock('@/api/auth', () => ({
 
 vi.mock('@/api/http', () => ({
   default: {},
-  registerAuthAccessors: vi.fn()
+  registerAuthAccessors: vi.fn(),
+  registerAuthFailureHandler: vi.fn()
+}))
+
+vi.mock('@/api/user', () => ({
+  fetchMe: vi.fn().mockResolvedValue({
+    id: 'u1',
+    email: 'a@b.com',
+    nickname: 'Alice',
+    avatarUrl: null,
+    roles: [],
+    createdAt: '2026-01-01T00:00:00Z'
+  })
 }))
 
 import { login, register, refreshToken, logout } from '@/api/auth'
@@ -44,7 +56,7 @@ describe('auth store', () => {
     vi.mocked(login).mockResolvedValue({
       accessToken: 'token-123',
       exp: Math.floor(Date.now() / 1000) + 900,
-      user: { id: 'u1', email: 'a@b.com', nickname: 'Alice', avatarUrl: null, roles: [] }
+      user: { id: 'u1', email: 'a@b.com', nickname: 'Alice', avatarUrl: null, roles: [], createdAt: '2026-01-01T00:00:00Z' }
     })
 
     const store = useAuthStore()
@@ -60,7 +72,7 @@ describe('auth store', () => {
     vi.mocked(login).mockResolvedValue({
       accessToken: 'token-123',
       exp: Math.floor(Date.now() / 1000) + 900,
-      user: { id: 'u1', email: 'a@b.com', nickname: 'Alice', avatarUrl: null, roles: [] }
+      user: { id: 'u1', email: 'a@b.com', nickname: 'Alice', avatarUrl: null, roles: [], createdAt: '2026-01-01T00:00:00Z' }
     })
 
     const store = useAuthStore()
@@ -101,7 +113,7 @@ describe('auth store', () => {
     vi.mocked(register).mockResolvedValue({
       accessToken: 'new-token',
       exp: Math.floor(Date.now() / 1000) + 900,
-      user: { id: 'u2', email: 'c@d.com', nickname: 'Bob', avatarUrl: null, roles: [] }
+      user: { id: 'u2', email: 'c@d.com', nickname: 'Bob', avatarUrl: null, roles: [], createdAt: '2026-01-01T00:00:00Z' }
     })
 
     const store = useAuthStore()
@@ -115,7 +127,7 @@ describe('auth store', () => {
     vi.mocked(login).mockResolvedValue({
       accessToken: 't',
       exp: Math.floor(Date.now() / 1000) + 900,
-      user: { id: 'u1', email: 'a@b.com', nickname: 'A', avatarUrl: null, roles: ['admin'] }
+      user: { id: 'u1', email: 'a@b.com', nickname: 'A', avatarUrl: null, roles: ['admin'], createdAt: '2026-01-01T00:00:00Z' }
     })
 
     const store = useAuthStore()

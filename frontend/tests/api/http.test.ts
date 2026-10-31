@@ -45,7 +45,7 @@ describe('http interceptor single-flight refresh', () => {
     const getter = vi.fn().mockReturnValue('my-token')
     registerAuthAccessors(getter, vi.fn())
 
-    const config = { headers: {} }
+    const config: { headers: Record<string, string> } = { headers: {} }
     for (const h of requestHandlers) {
       await h(config)
     }

@@ -1,4 +1,4 @@
-// Domain types shared across the frontend.
+// Domain types shared across the frontend, aligned with contracts/graphql.
 
 export interface User {
   id: string
@@ -6,9 +6,29 @@ export interface User {
   nickname: string
   avatarUrl: string | null
   roles: string[]
+  createdAt: string
+}
+
+export interface Chapter {
+  id: string
+  name: string
+  questionCount: number
 }
 
 export type QuizMode = 'PRACTICE' | 'EXAM' | 'CHAPTER'
+
+export type SessionStatus = 'ACTIVE' | 'COMPLETED' | 'ABANDONED'
+
+export interface QuizSession {
+  id: string
+  mode: QuizMode
+  chapterId: string | null
+  status: SessionStatus
+  currentIndex: number
+  totalQuestions: number
+  startedAt: string
+  completedAt: string | null
+}
 
 export type LeaderboardPeriod = 'DAILY' | 'WEEKLY' | 'ALL'
 
@@ -20,9 +40,9 @@ export interface QuestionOption {
 
 export interface QuestionContent {
   stem: string
-  imageUrl?: string
+  imageUrl: string | null
   options: QuestionOption[]
-  explanation?: string
+  explanation: string | null
 }
 
 export interface Question {
@@ -32,14 +52,23 @@ export interface Question {
   content: QuestionContent
 }
 
-export interface QuizSession {
-  id: string
-  mode: QuizMode
-  chapterId: string | null
-  status: 'ACTIVE' | 'COMPLETED' | 'ABANDONED'
-  currentIndex: number
-  totalQuestions: number
-  startedAt: string
+export interface SubmitAttemptInput {
+  sessionId: string
+  questionId: string
+  answer: string
+}
+
+export interface SubmitAttemptPayload {
+  accepted: boolean
+  attemptId: string
+  correct: boolean
+  correctOptionId: string | null
+  explanation: string | null
+}
+
+export interface UpdateProfileInput {
+  nickname?: string
+  avatarUrl?: string
 }
 
 export interface LeaderboardEntry {
@@ -58,15 +87,10 @@ export interface LeaderboardPage {
   total: number
 }
 
-export interface SubmitAttemptInput {
-  sessionId: string
-  questionId: string
-  answer: string
-}
-
-export interface SubmitAttemptPayload {
-  accepted: boolean
-  attemptId: string
+export interface RankSummary {
+  period: LeaderboardPeriod
+  rank: number | null
+  score: number
 }
 
 export interface ChapterStrength {
@@ -81,6 +105,47 @@ export interface ProfileSummary {
   totalAttempts: number
   correctRate: number
   chapterStrengths: ChapterStrength[]
+}
+
+export interface ConfigEntry {
+  namespace: string
+  key: string
+  value: string
+  updatedAt: string
+}
+
+export interface ConfigMutationPayload {
+  applied: boolean
+  degraded: boolean
+  entry: ConfigEntry | null
+  errorMessage: string | null
+}
+
+export interface ConfigSchemaEntry {
+  namespace: string
+  key: string
+  type: string
+  required: boolean
+  defaultValue: string | null
+  description: string | null
+}
+
+export interface ConfigAuditEntry {
+  id: string
+  namespace: string
+  key: string
+  oldValue: string | null
+  newValue: string | null
+  changedBy: string | null
+  changedAt: string
+}
+
+export interface QuestionVersion {
+  id: string
+  questionId: string
+  version: number
+  deletedAt: string | null
+  createdAt: string
 }
 
 export interface WebConfig {
@@ -98,25 +163,56 @@ export interface WebConfig {
   }
   quiz: {
     timerWarningSec: number
+    examDurationSec: number
   }
   maintenance: {
     enabled: boolean
     message: string
   }
   pollIntervalSec: number
+  auth: {
+    preRefreshSec: number
+    silentRestoreTimeoutSec: number
+  }
 }
 
-export interface BattleRoom {
-  id: string
-  mode: string
-  status: 'waiting' | 'matching' | 'playing' | 'settling' | 'finished'
-  players: BattlePlayer[]
-  currentQuestionIndex: number
-}
+export type BattleMode = '1v1' | 'squad'
+
+export type BattleStatus = 'waiting' | 'matching' | 'playing' | 'settling' | 'finished'
 
 export interface BattlePlayer {
   userId: string
   nickname: string
   score: number
   connected: boolean
+}
+
+export interface BattleRoomState {
+  roomId: string
+  status: BattleStatus
+  players: BattlePlayer[]
+  currentIndex: number
+  totalQuestions: number
+}
+
+export interface BattleQuestionFrame {
+  index: number
+  total: number
+  seconds: number | null
+  question: Question
+}
+
+export interface BattleAnswerResult {
+  index: number
+  correct: boolean
+  correctOptionId: string | null
+  score: number
+  totalScore: number
+  explanation: string | null
+}
+
+export interface BattleGameOver {
+  winnerId: string | null
+  players: BattlePlayer[]
+  finalScore: number
 }

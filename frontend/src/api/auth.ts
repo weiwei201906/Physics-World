@@ -1,15 +1,10 @@
 import http, { type RefreshResponse } from './http'
+import type { User } from '@/types'
 
 export interface LoginResponse {
   accessToken: string
   exp: number
-  user: {
-    id: string
-    email: string
-    nickname: string
-    avatarUrl: string | null
-    roles: string[]
-  }
+  user: User
 }
 
 export interface RegisterInput {
@@ -25,36 +20,36 @@ export interface LoginInput {
 
 /**
  * POST /auth/login
- * Returns access token (body) + sets refresh token via httpOnly cookie.
+ * Returns the access token in the body and rotates the refresh cookie.
  */
-export async function login(input: LoginInput): Promise<LoginResponse> {
-  const { data } = await http.post<LoginResponse>('/auth/login', input)
+export async function login(input: LoginInput, signal?: AbortSignal): Promise<LoginResponse> {
+  const { data } = await http.post<LoginResponse>('/auth/login', input, { signal })
   return data
 }
 
 /**
  * POST /auth/register
- * Creates user and returns tokens immediately.
+ * Creates the account and returns tokens immediately.
  */
-export async function register(input: RegisterInput): Promise<LoginResponse> {
-  const { data } = await http.post<LoginResponse>('/auth/register', input)
+export async function register(input: RegisterInput, signal?: AbortSignal): Promise<LoginResponse> {
+  const { data } = await http.post<LoginResponse>('/auth/register', input, { signal })
   return data
 }
 
 /**
  * POST /auth/refresh-token
- * No body; refresh token comes from httpOnly cookie.
- * Returns 200 with new access token + rotated cookie, or 401 on failure.
+ * No body; the refresh token travels in the httpOnly cookie. 200 returns a new
+ * access token plus a rotated cookie, 401 means degradation.
  */
-export async function refreshToken(): Promise<RefreshResponse> {
-  const { data } = await http.post<RefreshResponse>('/auth/refresh-token')
+export async function refreshToken(signal?: AbortSignal): Promise<RefreshResponse> {
+  const { data } = await http.post<RefreshResponse>('/auth/refresh-token', undefined, { signal })
   return data
 }
 
 /**
  * POST /auth/logout
- * Revokes refresh token on the server.
+ * Revokes the refresh token server side.
  */
-export async function logout(): Promise<void> {
-  await http.post('/auth/logout')
+export async function logout(signal?: AbortSignal): Promise<void> {
+  await http.post('/auth/logout', undefined, { signal })
 }

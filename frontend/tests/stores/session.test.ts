@@ -25,13 +25,14 @@ describe('session store', () => {
       status: 'ACTIVE',
       currentIndex: 0,
       totalQuestions: 5,
-      startedAt: '2026-01-01T00:00:00Z'
+      startedAt: '2026-01-01T00:00:00Z',
+      completedAt: null
     })
     vi.mocked(fetchSessionQuestion).mockResolvedValue({
       id: 'q1',
       chapterId: 'c1',
       difficulty: 1,
-      content: { stem: 'Q?', options: [{ id: 'a', label: 'A', text: 'opt a' }] }
+      content: { stem: 'Q?', imageUrl: null, explanation: null, options: [{ id: 'a', label: 'A', text: 'opt a' }] }
     })
 
     const store = useSessionStore()
@@ -51,13 +52,14 @@ describe('session store', () => {
       status: 'ACTIVE',
       currentIndex: 0,
       totalQuestions: 1,
-      startedAt: '2026-01-01T00:00:00Z'
+      startedAt: '2026-01-01T00:00:00Z',
+      completedAt: null
     })
     vi.mocked(fetchSessionQuestion).mockResolvedValue({
       id: 'q1',
       chapterId: 'c1',
       difficulty: 1,
-      content: { stem: 'Q?', options: [] }
+      content: { stem: 'Q?', imageUrl: null, explanation: null, options: [] }
     })
 
     const store = useSessionStore()
@@ -73,15 +75,22 @@ describe('session store', () => {
       status: 'ACTIVE',
       currentIndex: 0,
       totalQuestions: 5,
-      startedAt: '2026-01-01T00:00:00Z'
+      startedAt: '2026-01-01T00:00:00Z',
+      completedAt: null
     })
     vi.mocked(fetchSessionQuestion).mockResolvedValue({
       id: 'q1',
       chapterId: 'c1',
       difficulty: 1,
-      content: { stem: 'Q?', options: [{ id: 'a', label: 'A', text: 'a' }] }
+      content: { stem: 'Q?', imageUrl: null, explanation: null, options: [{ id: 'a', label: 'A', text: 'a' }] }
     })
-    vi.mocked(submitAttempt).mockResolvedValue({ accepted: true, attemptId: 'att1' })
+    vi.mocked(submitAttempt).mockResolvedValue({
+      accepted: true,
+      attemptId: 'att1',
+      correct: true,
+      correctOptionId: 'a',
+      explanation: null
+    })
 
     const store = useSessionStore()
     await store.startSession('PRACTICE')
@@ -103,13 +112,14 @@ describe('session store', () => {
       status: 'ACTIVE',
       currentIndex: 0,
       totalQuestions: 3,
-      startedAt: '2026-01-01T00:00:00Z'
+      startedAt: '2026-01-01T00:00:00Z',
+      completedAt: null
     })
     vi.mocked(fetchSessionQuestion).mockResolvedValue({
       id: 'q1',
       chapterId: 'c1',
       difficulty: 1,
-      content: { stem: 'Q?', options: [] }
+      content: { stem: 'Q?', imageUrl: null, explanation: null, options: [] }
     })
 
     const store = useSessionStore()
@@ -128,13 +138,14 @@ describe('session store', () => {
       status: 'ACTIVE',
       currentIndex: 0,
       totalQuestions: 3,
-      startedAt: '2026-01-01T00:00:00Z'
+      startedAt: '2026-01-01T00:00:00Z',
+      completedAt: null
     })
     vi.mocked(fetchSessionQuestion).mockResolvedValue({
       id: 'q1',
       chapterId: 'c1',
       difficulty: 1,
-      content: { stem: 'Q?', options: [] }
+      content: { stem: 'Q?', imageUrl: null, explanation: null, options: [] }
     })
 
     const store = useSessionStore()
@@ -153,13 +164,14 @@ describe('session store', () => {
       status: 'ACTIVE',
       currentIndex: 2,
       totalQuestions: 10,
-      startedAt: '2026-01-01T00:00:00Z'
+      startedAt: '2026-01-01T00:00:00Z',
+      completedAt: null
     })
     vi.mocked(fetchSessionQuestion).mockResolvedValue({
       id: 'q3',
       chapterId: 'c1',
       difficulty: 1,
-      content: { stem: 'Q?', options: [] }
+      content: { stem: 'Q?', imageUrl: null, explanation: null, options: [] }
     })
 
     const store = useSessionStore()

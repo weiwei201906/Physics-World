@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
+import { t } from '@/i18n'
+import BrandMark from '@/components/BrandMark.vue'
+import PhysicsGlyph from '@/components/PhysicsGlyph.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -12,18 +15,28 @@ const nickname = ref('')
 const error = ref('')
 const loading = ref(false)
 
+const MIN_PASSWORD = 8
+
 async function handleSubmit(): Promise<void> {
   error.value = ''
-  if (password.value.length < 8) {
-    error.value = 'Password must be at least 8 characters.'
+  if (!nickname.value.trim()) {
+    error.value = t('auth.nicknameRequired')
+    return
+  }
+  if (!email.value.trim()) {
+    error.value = t('auth.emailRequired')
+    return
+  }
+  if (password.value.length < MIN_PASSWORD) {
+    error.value = t('auth.passwordTooShort', { min: MIN_PASSWORD })
     return
   }
   loading.value = true
   try {
-    await auth.register(email.value, password.value, nickname.value)
+    await auth.register(email.value.trim(), password.value, nickname.value.trim())
     await router.push('/')
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Registration failed'
+  } catch {
+    error.value = t('auth.registerFailed')
   } finally {
     loading.value = false
   }
@@ -31,195 +44,230 @@ async function handleSubmit(): Promise<void> {
 </script>
 
 <template>
-  <div class="auth-page">
-    <div class="auth-panel">
-      <div class="auth-brand">
-        <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-          <circle cx="16" cy="16" r="8" stroke="currentColor" stroke-width="2" />
-          <ellipse cx="16" cy="16" rx="12" ry="4.5" stroke="currentColor" stroke-width="1.5" transform="rotate(30 16 16)" />
-          <ellipse cx="16" cy="16" rx="12" ry="4.5" stroke="currentColor" stroke-width="1.5" transform="rotate(-30 16 16)" />
-          <circle cx="16" cy="16" r="2" fill="currentColor" />
-        </svg>
-        <span>PhysLab</span>
-      </div>
+  <div class="auth-shell">
+    <div class="auth-grid">
+      <section class="auth-form-col">
+        <RouterLink to="/" class="brand">
+          <BrandMark :size="34" class="brand-glyph" />
+          <span class="brand-text">
+            <span class="brand-word">{{ t('brand.name') }}</span>
+            <span class="brand-zh">{{ t('brand.nameZh') }}</span>
+          </span>
+        </RouterLink>
 
-      <h1>Create your account</h1>
-      <p class="subtitle">Start practicing physics in minutes.</p>
+        <p class="eyebrow">{{ t('brand.tagline') }}</p>
+        <h1 class="auth-title">{{ t('auth.registerTitle') }}</h1>
+        <p class="auth-subtitle">{{ t('auth.registerSubtitle') }}</p>
 
-      <form class="form" @submit.prevent="handleSubmit">
-        <div class="field">
-          <label class="field-label" for="nickname">Nickname</label>
-          <input
-            id="nickname"
-            v-model="nickname"
-            type="text"
-            class="field-input"
-            required
-          />
+        <form class="form auth-form" @submit.prevent="handleSubmit">
+          <div class="field">
+            <label class="field-label" for="nickname">{{ t('auth.nickname') }}</label>
+            <input id="nickname" v-model="nickname" type="text" class="field-input" required />
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="email">{{ t('auth.email') }}</label>
+            <input
+              id="email"
+              v-model="email"
+              type="email"
+              class="field-input"
+              autocomplete="email"
+              required
+            />
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="password">{{ t('auth.password') }}</label>
+            <input
+              id="password"
+              v-model="password"
+              type="password"
+              class="field-input"
+              autocomplete="new-password"
+              required
+            />
+            <span class="field-hint">{{ t('auth.passwordHint', { min: MIN_PASSWORD }) }}</span>
+          </div>
+
+          <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+
+          <button type="submit" class="btn btn-accent btn-lg btn-block" :disabled="loading">
+            {{ loading ? t('auth.creatingAccount') : t('auth.createAccount') }}
+          </button>
+        </form>
+
+        <p class="auth-footer">
+          {{ t('auth.haveAccount') }}
+          <RouterLink to="/login">{{ t('auth.goLogin') }}</RouterLink>
+        </p>
+      </section>
+
+      <aside class="auth-aside" aria-hidden="true">
+        <div class="aside-rule" />
+        <PhysicsGlyph name="pendulum" :size="88" class="aside-glyph" />
+        <p class="aside-line">{{ t('auth.brandLine') }}</p>
+        <div class="aside-notes">
+          <p class="aside-note">{{ t('auth.notesTitle') }}</p>
+          <ul class="note-list">
+            <li>{{ t('auth.noteOne') }}</li>
+            <li>{{ t('auth.noteTwo') }}</li>
+            <li>{{ t('auth.noteThree') }}</li>
+          </ul>
         </div>
-
-        <div class="field">
-          <label class="field-label" for="email">Email</label>
-          <input
-            id="email"
-            v-model="email"
-            type="email"
-            class="field-input"
-            autocomplete="email"
-            required
-          />
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="password">Password</label>
-          <input
-            id="password"
-            v-model="password"
-            type="password"
-            class="field-input"
-            autocomplete="new-password"
-            required
-          />
-        </div>
-
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-
-        <button type="submit" class="btn btn-primary btn-block" :disabled="loading">
-          {{ loading ? 'Creating...' : 'Create account' }}
-        </button>
-      </form>
-
-      <p class="auth-footer">
-        Already have an account?
-        <RouterLink to="/login">Sign in</RouterLink>
-      </p>
-    </div>
-
-    <div class="auth-visual" aria-hidden="true">
-      <div class="visual-grid">
-        <div v-for="i in 8" :key="i" class="grid-line" :style="{ top: `${i * 12}%` }" />
-        <div v-for="i in 8" :key="'v'+i" class="grid-line-vertical" :style="{ left: `${i * 12}%` }" />
-      </div>
-      <div class="visual-copy">
-        <h2>Built for how students learn physics.</h2>
-        <p>Track your strengths by chapter, compete in live battles, and get questions that target exactly where you need practice.</p>
-      </div>
+      </aside>
     </div>
   </div>
 </template>
 
 <style scoped>
-.auth-page {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+.auth-shell {
   min-height: 100vh;
+  background-color: var(--color-bg);
+  padding: var(--space-6) var(--space-5);
 }
 
-.auth-panel {
+.auth-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: var(--space-7);
+  max-width: var(--container-max);
+  margin: 0 auto;
+}
+
+.auth-form-col {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: var(--space-8) var(--space-7);
-  max-width: 480px;
-  margin: 0 auto;
-  width: 100%;
+  padding: var(--space-5) 0;
 }
 
-.auth-brand {
+.brand {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin-bottom: var(--space-7);
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--text-xl);
-  color: var(--color-primary-700);
+  color: var(--color-text);
+  text-decoration: none;
 }
 
-.brand-mark {
-  width: 32px;
-  height: 32px;
+.brand-glyph {
+  color: var(--color-accent);
 }
 
-.subtitle {
-  color: var(--color-text-muted);
-  margin: var(--space-2) 0 var(--space-6);
-}
-
-.form {
+.brand-text {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+  align-items: baseline;
+  gap: var(--space-2);
 }
 
-.form-error {
-  color: var(--color-wrong);
+.brand-word {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  letter-spacing: 0.24em;
+  font-weight: 600;
+}
+
+.brand-zh {
+  font-family: var(--font-display);
   font-size: var(--text-sm);
-  margin: 0;
+  letter-spacing: 0.2em;
+  color: var(--color-text-muted);
+}
+
+.auth-title {
+  font-size: var(--text-3xl);
+}
+
+.auth-subtitle {
+  margin: var(--space-2) 0 var(--space-6);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.auth-form {
+  max-width: 24rem;
 }
 
 .auth-footer {
   margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-rule);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.auth-aside {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: var(--space-6);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+  overflow: hidden;
+}
+
+.aside-rule {
+  position: absolute;
+  top: var(--space-6);
+  left: var(--space-6);
+  right: var(--space-6);
+  height: 1px;
+  background-color: var(--color-rule);
+}
+
+.aside-glyph {
+  position: absolute;
+  top: var(--space-7);
+  right: var(--space-6);
+  color: var(--color-moss);
+  opacity: 0.9;
+}
+
+.aside-line {
+  max-width: 24ch;
+  margin: 0 0 var(--space-6);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  line-height: 1.35;
+  color: var(--color-text);
+}
+
+.aside-notes {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-rule);
+}
+
+.aside-note {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.note-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
-  text-align: center;
 }
 
-.auth-visual {
-  position: relative;
-  background-color: var(--color-primary-800);
-  color: var(--color-text-on-primary);
-  overflow: hidden;
-  display: flex;
-  align-items: flex-end;
-  padding: var(--space-8);
-}
-
-.visual-grid {
-  position: absolute;
-  inset: 0;
-  opacity: 0.15;
-}
-
-.grid-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--color-text-on-primary);
-}
-
-.grid-line-vertical {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--color-text-on-primary);
-}
-
-.visual-copy {
-  position: relative;
-  z-index: 1;
-  max-width: 420px;
-}
-
-.visual-copy h2 {
-  color: var(--color-text-on-primary);
-  margin-bottom: var(--space-3);
-}
-
-.visual-copy p {
-  color: rgba(248, 250, 252, 0.8);
-  margin: 0;
-  line-height: 1.7;
-}
-
-@media (max-width: 900px) {
-  .auth-page {
+@media (max-width: 960px) {
+  .auth-grid {
     grid-template-columns: 1fr;
+    gap: var(--space-5);
   }
-  .auth-visual {
-    display: none;
+
+  .auth-aside {
+    min-height: 18rem;
+  }
+
+  .auth-shell {
+    padding: var(--space-5) var(--space-4);
   }
 }
 </style>

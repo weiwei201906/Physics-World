@@ -1,48 +1,67 @@
 import { gqlRequest } from './graphql'
 import type {
   User,
+  Chapter,
   QuizSession,
+  QuizMode,
   Question,
   SubmitAttemptInput,
   SubmitAttemptPayload,
   LeaderboardPage,
-  LeaderboardPeriod
+  LeaderboardPeriod,
+  RankSummary,
+  UpdateProfileInput
 } from '@/types'
+
+const USER_FIELDS = 'id email nickname avatarUrl roles createdAt'
+const SESSION_FIELDS =
+  'id mode chapterId status currentIndex totalQuestions startedAt completedAt'
+const QUESTION_FIELDS = `
+  id chapterId difficulty
+  content { stem imageUrl explanation options { id label text } }
+`
 
 const ME_QUERY = `
   query Me {
-    me { id email nickname avatarUrl roles }
+    me { ${USER_FIELDS} }
+  }
+`
+
+const CHAPTERS_QUERY = `
+  query Chapters {
+    chapters { id name questionCount }
   }
 `
 
 const START_SESSION_MUTATION = `
   mutation StartQuizSession($mode: QuizMode!, $chapterId: ID) {
     startQuizSession(mode: $mode, chapterId: $chapterId) {
-      id mode chapterId status currentIndex totalQuestions startedAt
+      ${SESSION_FIELDS}
     }
   }
 `
 
 const GET_SESSION_QUERY = `
-  query QuizSession($id: ID!) {
+  query QuizSession($id: UUID!) {
     quizSession(id: $id) {
-      id mode chapterId status currentIndex totalQuestions startedAt
+      ${SESSION_FIELDS}
     }
   }
 `
 
 const GET_QUESTION_QUERY = `
-  query SessionQuestion($sessionId: ID!, $index: Int!) {
+  query SessionQuestion($sessionId: UUID!, $index: Int!) {
     sessionQuestion(sessionId: $sessionId, index: $index) {
-      id chapterId difficulty
-      content { stem imageUrl explanation options { id label text } }
+      ${QUESTION_FIELDS}
     }
   }
 `
 
 const SUBMIT_ATTEMPT_MUTATION = `
   mutation SubmitAttempt($input: SubmitAttemptInput!) {
-    submitAttempt(input: $input) { accepted attemptId }
+    submitAttempt(input: $input) {
+      accepted attemptId correct correctOptionId explanation
+    }
   }
 `
 
@@ -55,50 +74,103 @@ const LEADERBOARD_QUERY = `
   }
 `
 
-export async function fetchMe(): Promise<User> {
-  return gqlRequest<{ me: User }>(ME_QUERY).then((d) => d.me)
+const MY_RANK_QUERY = `
+  query MyRank($period: Period!) {
+    myRank(period: $period) { period rank score }
+  }
+`
+
+const UPDATE_PROFILE_MUTATION = `
+  mutation UpdateProfile($input: UpdateProfileInput!) {
+    updateProfile(input: $input) { ${USER_FIELDS} }
+  }
+`
+
+export async function fetchMe(signal?: AbortSignal): Promise<User> {
+  return gqlRequest<{ me: User }>(ME_QUERY, undefined, signal).then((d) => d.me)
+}
+
+export async function fetchChapters(signal?: AbortSignal): Promise<Chapter[]> {
+  return gqlRequest<{ chapters: Chapter[] }>(CHAPTERS_QUERY, undefined, signal).then(
+    (d) => d.chapters
+  )
 }
 
 export async function startQuizSession(
-  mode: 'PRACTICE' | 'EXAM' | 'CHAPTER',
-  chapterId?: string
+  mode: QuizMode,
+  chapterId?: string,
+  signal?: AbortSignal
 ): Promise<QuizSession> {
-  return gqlRequest<{ startQuizSession: QuizSession }>(START_SESSION_MUTATION, {
-    mode,
-    chapterId: chapterId ?? null
-  }).then((d) => d.startQuizSession)
+  return gqlRequest<{ startQuizSession: QuizSession }>(
+    START_SESSION_MUTATION,
+    { mode, chapterId: chapterId ?? null },
+    signal
+  ).then((d) => d.startQuizSession)
 }
 
-export async function fetchQuizSession(id: string): Promise<QuizSession> {
-  return gqlRequest<{ quizSession: QuizSession }>(GET_SESSION_QUERY, { id }).then(
-    (d) => d.quizSession
-  )
+export async function fetchQuizSession(
+  id: string,
+  signal?: AbortSignal
+): Promise<QuizSession | null> {
+  return gqlRequest<{ quizSession: QuizSession | null }>(
+    GET_SESSION_QUERY,
+    { id },
+    signal
+  ).then((d) => d.quizSession)
 }
 
 export async function fetchSessionQuestion(
   sessionId: string,
-  index: number
-): Promise<Question> {
-  return gqlRequest<{ sessionQuestion: Question }>(GET_QUESTION_QUERY, {
-    sessionId,
-    index
-  }).then((d) => d.sessionQuestion)
+  index: number,
+  signal?: AbortSignal
+): Promise<Question | null> {
+  return gqlRequest<{ sessionQuestion: Question | null }>(
+    GET_QUESTION_QUERY,
+    { sessionId, index },
+    signal
+  ).then((d) => d.sessionQuestion)
 }
 
-export async function submitAttempt(input: SubmitAttemptInput): Promise<SubmitAttemptPayload> {
-  return gqlRequest<{ submitAttempt: SubmitAttemptPayload }>(SUBMIT_ATTEMPT_MUTATION, {
-    input
-  }).then((d) => d.submitAttempt)
+export async function submitAttempt(
+  input: SubmitAttemptInput,
+  signal?: AbortSignal
+): Promise<SubmitAttemptPayload> {
+  return gqlRequest<{ submitAttempt: SubmitAttemptPayload }>(
+    SUBMIT_ATTEMPT_MUTATION,
+    { input },
+    signal
+  ).then((d) => d.submitAttempt)
 }
 
 export async function fetchLeaderboard(
   period: LeaderboardPeriod,
   page: number,
-  size: number
+  size: number,
+  signal?: AbortSignal
 ): Promise<LeaderboardPage> {
-  return gqlRequest<{ leaderboard: LeaderboardPage }>(LEADERBOARD_QUERY, {
-    period,
-    page,
-    size
-  }).then((d) => d.leaderboard)
+  return gqlRequest<{ leaderboard: LeaderboardPage }>(
+    LEADERBOARD_QUERY,
+    { period, page, size },
+    signal
+  ).then((d) => d.leaderboard)
+}
+
+export async function fetchMyRank(
+  period: LeaderboardPeriod,
+  signal?: AbortSignal
+): Promise<RankSummary> {
+  return gqlRequest<{ myRank: RankSummary }>(MY_RANK_QUERY, { period }, signal).then(
+    (d) => d.myRank
+  )
+}
+
+export async function updateProfile(
+  input: UpdateProfileInput,
+  signal?: AbortSignal
+): Promise<User> {
+  return gqlRequest<{ updateProfile: User }>(
+    UPDATE_PROFILE_MUTATION,
+    { input },
+    signal
+  ).then((d) => d.updateProfile)
 }

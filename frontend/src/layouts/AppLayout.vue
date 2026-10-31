@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { RouterView, RouterLink, useRoute } from 'vue-router'
+import { t } from '@/i18n'
+import BrandMark from '@/components/BrandMark.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useConfigStore } from '@/stores/config'
 
@@ -9,251 +11,346 @@ const config = useConfigStore()
 const route = useRoute()
 
 const navItems = [
-  { name: 'home', label: 'Dashboard', path: '/' },
-  { name: 'practice', label: 'Practice', path: '/practice' },
-  { name: 'recommendation', label: 'Recommended', path: '/recommendation' },
-  { name: 'battle', label: 'Battle', path: '/battle' },
-  { name: 'leaderboard', label: 'Leaderboard', path: '/leaderboard' },
-  { name: 'profile', label: 'Profile', path: '/profile' }
-]
+  { name: 'home', key: 'nav.home', path: '/' },
+  { name: 'practice', key: 'nav.practice', path: '/practice' },
+  { name: 'chapters', key: 'nav.chapters', path: '/chapters' },
+  { name: 'recommendation', key: 'nav.recommendation', path: '/recommendation' },
+  { name: 'battle', key: 'nav.battle', path: '/battle' },
+  { name: 'leaderboard', key: 'nav.leaderboard', path: '/leaderboard' },
+  { name: 'profile', key: 'nav.profile', path: '/profile' }
+] as const
 
-const isActive = (path: string) => {
+function isActive(path: string): boolean {
   if (path === '/') return route.path === '/'
   return route.path.startsWith(path)
 }
 
 const initials = computed(() => {
-  const name = auth.user?.nickname ?? auth.user?.email ?? '?'
+  const name = auth.user?.nickname || auth.user?.email || '?'
   return name.charAt(0).toUpperCase()
 })
 
 function handleLogout(): void {
   void auth.logout()
 }
-
-void config.init()
 </script>
 
 <template>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-          <circle cx="16" cy="16" r="8" stroke="currentColor" stroke-width="2" />
-          <ellipse cx="16" cy="16" rx="12" ry="4.5" stroke="currentColor" stroke-width="1.5" transform="rotate(30 16 16)" />
-          <ellipse cx="16" cy="16" rx="12" ry="4.5" stroke="currentColor" stroke-width="1.5" transform="rotate(-30 16 16)" />
-          <circle cx="16" cy="16" r="2" fill="currentColor" />
-        </svg>
-        <span class="brand-name">PhysLab</span>
-      </div>
-
-      <nav class="nav" aria-label="Primary">
-        <RouterLink
-          v-for="item in navItems"
-          :key="item.name"
-          :to="item.path"
-          class="nav-link"
-          :class="{ 'nav-link--active': isActive(item.path) }"
-        >
-          {{ item.label }}
+  <div class="shell">
+    <header class="masthead">
+      <div class="container masthead-inner">
+        <RouterLink to="/" class="brand" :aria-label="t('brand.name')">
+          <BrandMark :size="30" class="brand-glyph" />
+          <span class="brand-text">
+            <span class="brand-word">{{ t('brand.name') }}</span>
+            <span class="brand-zh">{{ t('brand.nameZh') }}</span>
+          </span>
+          <span class="brand-tagline">{{ t('brand.tagline') }}</span>
         </RouterLink>
-      </nav>
 
-      <div v-if="auth.isAdmin" class="nav-section">
-        <span class="nav-section-label">Admin</span>
-        <RouterLink to="/admin" class="nav-link" :class="{ 'nav-link--active': isActive('/admin') }">
-          Console
-        </RouterLink>
-      </div>
+        <nav class="nav" :aria-label="t('nav.menu')">
+          <RouterLink
+            v-for="item in navItems"
+            :key="item.name"
+            :to="item.path"
+            class="nav-link"
+            :class="{ 'nav-link--active': isActive(item.path) }"
+          >
+            {{ t(item.key) }}
+          </RouterLink>
+          <RouterLink
+            v-if="auth.isAdmin"
+            to="/admin"
+            class="nav-link"
+            :class="{ 'nav-link--active': isActive('/admin') }"
+          >
+            {{ t('nav.admin') }}
+          </RouterLink>
+        </nav>
 
-      <div class="sidebar-footer">
-        <div class="user-chip">
-          <div class="user-avatar">{{ initials }}</div>
-          <div class="user-meta">
-            <span class="user-name">{{ auth.user?.nickname }}</span>
-            <span class="user-email">{{ auth.user?.email }}</span>
+        <div class="account">
+          <span class="account-avatar" :title="auth.user?.nickname ?? ''">
+            <img
+              v-if="auth.user?.avatarUrl"
+              :src="auth.user.avatarUrl"
+              :alt="auth.user.nickname"
+              class="account-image"
+            />
+            <span v-else>{{ initials }}</span>
+          </span>
+          <div class="account-meta">
+            <span class="account-name">{{ auth.user?.nickname }}</span>
+            <span v-if="auth.isAdmin" class="account-role">{{ t('common.roleAdmin') }}</span>
           </div>
+          <button type="button" class="account-logout" @click="handleLogout">
+            {{ t('common.logout') }}
+          </button>
         </div>
-        <button class="btn btn-ghost btn-sm btn-block" @click="handleLogout">
-          Sign out
-        </button>
       </div>
-    </aside>
+    </header>
 
-    <main class="content">
-      <RouterView v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
-          <component :is="Component" />
-        </transition>
-      </RouterView>
+    <div v-if="config.isMaintenance" class="container">
+      <p class="maintenance" role="status">
+        {{ t('home.maintenance', { message: config.maintenanceMessage }) }}
+      </p>
+    </div>
+
+    <main class="main">
+      <div class="container">
+        <RouterView />
+      </div>
     </main>
+
+    <footer class="colophon">
+      <div class="container colophon-inner">
+        <span>{{ t('brand.name') }}</span>
+        <span>{{ t('brand.subtitle') }}</span>
+      </div>
+    </footer>
   </div>
 </template>
 
 <style scoped>
-.app-shell {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
-  min-height: 100vh;
-}
-
-.sidebar {
+.shell {
   display: flex;
   flex-direction: column;
-  background-color: var(--color-surface);
-  border-right: 1px solid var(--color-border);
-  padding: var(--space-5) var(--space-4);
+  min-height: 100vh;
+  background-color: var(--color-bg);
+}
+
+.masthead {
   position: sticky;
   top: 0;
-  height: 100vh;
+  z-index: 20;
+  background-color: var(--color-surface);
+  border-top: 2px solid var(--color-text);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.masthead-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-5);
+  min-height: var(--masthead-height);
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-6);
-  padding: 0 var(--space-1);
-}
-
-.brand-mark {
-  width: 28px;
-  height: 28px;
-  color: var(--color-primary-700);
-}
-
-.brand-name {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--text-lg);
+  gap: var(--space-3);
   color: var(--color-text);
+  text-decoration: none;
+}
+
+.brand-glyph {
+  color: var(--color-accent);
+}
+
+.brand-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.brand-word {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: 0.22em;
+}
+
+.brand-zh {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  letter-spacing: 0.2em;
+}
+
+.brand-tagline {
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--color-rule);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .nav {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .nav-link {
-  display: block;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
+  border-bottom: 2px solid transparent;
   color: var(--color-text-muted);
-  font-size: var(--text-base);
-  font-weight: 500;
+  font-size: var(--text-sm);
   text-decoration: none;
-  transition: background-color var(--duration-fast) var(--ease-out),
-              color var(--duration-fast) var(--ease-out);
+  white-space: nowrap;
 }
 
 .nav-link:hover {
-  background-color: var(--color-bg-muted);
   color: var(--color-text);
   text-decoration: none;
 }
 
 .nav-link--active {
-  background-color: var(--color-primary-50);
-  color: var(--color-primary-800);
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
 }
 
-.nav-section {
-  margin-top: var(--space-6);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border);
-}
-
-.nav-section-label {
-  display: block;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-faint);
-  padding: 0 var(--space-3) var(--space-2);
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.user-chip {
+.account {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2);
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
-.user-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background-color: var(--color-primary-700);
-  color: var(--color-text-on-primary);
+.account-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-xs);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-display);
   font-size: var(--text-sm);
+  overflow: hidden;
   flex-shrink: 0;
 }
 
-.user-meta {
+.account-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-meta {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.user-name {
+.account-name {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.user-email {
+.account-role {
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--color-text-faint);
+  color: var(--color-accent-deep);
+}
+
+.account-logout {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-xs);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.content {
-  min-width: 0;
-  padding: var(--space-6);
+.account-logout:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-deep);
 }
 
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity var(--duration-base) var(--ease-out);
+.maintenance {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-xs);
+  background-color: var(--color-warning-bg);
+  color: var(--color-warning);
+  font-size: var(--text-sm);
 }
 
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
+.main {
+  flex: 1;
+  padding: var(--space-7) 0 var(--space-8);
 }
 
-@media (max-width: 768px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-  .sidebar {
-    position: static;
-    height: auto;
-    flex-direction: row;
-    overflow-x: auto;
-  }
-  .sidebar-footer,
-  .nav-section {
+.colophon {
+  border-top: 1px solid var(--color-rule);
+  padding: var(--space-4) 0;
+  background-color: var(--color-surface);
+}
+
+.colophon-inner {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 1180px) {
+  .brand-tagline {
     display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .masthead-inner {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'brand account'
+      'nav nav';
+    row-gap: var(--space-2);
+  }
+
+  .brand {
+    grid-area: brand;
+  }
+
+  .account {
+    grid-area: account;
+  }
+
+  .nav {
+    grid-area: nav;
+    overflow-x: auto;
+    padding-bottom: var(--space-1);
+    border-top: 1px solid var(--color-rule);
+  }
+
+  .nav-link {
+    padding-top: var(--space-1);
+    padding-bottom: var(--space-1);
+  }
+
+  .account-meta {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .masthead {
+    position: static;
+  }
+
+  .main {
+    padding: var(--space-5) 0 var(--space-7);
+  }
+
+  .colophon-inner {
+    flex-direction: column;
+    gap: var(--space-1);
   }
 }
 </style>

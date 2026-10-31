@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useBattleWebSocket } from '@/composables/useBattleWebSocket'
+import { answerFrame, BATTLE_FRAME, joinRoomFrame } from '@/api/battle'
 
 const props = defineProps<{ roomId: string }>()
 const router = useRouter()
@@ -16,22 +17,24 @@ const status = ref<'waiting' | 'playing' | 'finished'>('waiting')
 const players = ref<Array<{ userId: string; nickname: string; score: number }>>([])
 const currentQuestion = ref<{ stem: string; options: Array<{ id: string; text: string }> } | null>(null)
 const selectedAnswer = ref<string | null>(null)
+const questionIndex = ref(0)
 
 onMounted(() => {
   connect()
-  send({ type: 'join_room', roomId: props.roomId })
+  send(joinRoomFrame(props.roomId))
 
   onMessage((data) => {
     const msg = data as Record<string, unknown>
-    if (msg.type === 'room_state') {
+    if (msg.type === BATTLE_FRAME.ROOM_STATE) {
       players.value = msg.players as typeof players.value
       status.value = msg.status as typeof status.value
     }
-    if (msg.type === 'question') {
+    if (msg.type === BATTLE_FRAME.QUESTION) {
+      questionIndex.value = msg.index as number
       currentQuestion.value = msg.question as typeof currentQuestion.value
       status.value = 'playing'
     }
-    if (msg.type === 'game_over') {
+    if (msg.type === BATTLE_FRAME.GAME_OVER) {
       status.value = 'finished'
     }
   })
@@ -43,7 +46,7 @@ onUnmounted(() => {
 
 function submit(optionId: string): void {
   selectedAnswer.value = optionId
-  send({ type: 'answer', optionId })
+  send(answerFrame(questionIndex.value, optionId))
 }
 
 function leave(): void {

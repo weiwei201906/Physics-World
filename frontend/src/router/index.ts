@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { resolveNavigation } from './guard'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -33,6 +34,11 @@ const routes: RouteRecordRaw[] = [
         name: 'quiz-session',
         component: () => import('@/views/quiz/QuizSessionView.vue'),
         props: true
+      },
+      {
+        path: 'chapters',
+        name: 'chapters',
+        component: () => import('@/views/quiz/ChapterView.vue')
       },
       {
         path: 'chapter/:chapterId',
@@ -69,7 +75,8 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'admin',
         name: 'admin',
-        component: () => import('@/views/admin/AdminView.vue')
+        component: () => import('@/views/admin/AdminView.vue'),
+        meta: { admin: true }
       }
     ]
   },
@@ -91,11 +98,10 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
-  if (to.meta.public) return true
-  if (!auth.isAuthenticated) {
-    return { name: 'login', query: { redirect: to.fullPath } }
-  }
-  return true
+  return resolveNavigation(to, {
+    isAuthenticated: auth.isAuthenticated,
+    isAdmin: auth.isAdmin
+  })
 })
 
 export default router
