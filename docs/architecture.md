@@ -94,15 +94,17 @@
 | `user-api-sse` | Rust + Axum | SSE | 信任 gateway header | `/events` 端点 + 订阅 `notification:broadcast` + `auth:revoked` | GraphQL、写操作 |
 | `recommendation-service` | Rust + Axum + async-graphql | GraphQL | 信任 gateway header | 推荐读、画像 flusher、画像摘要 | 答题提交、排行榜写 |
 | `battle-service` | Rust + Axum WS + Tokio | WebSocket | 握手读 gateway header + 新 token 帧验签 + 查黑名单 + 撤销订阅 | 匹配、对战状态机、广播、结算、对账 | 本地持有房间状态、PG 读写 |
-| `question-bank` | C++ + Flare + 标准 gRPC C++ 库 | 对外 gRPC / 对内 FlareRPC | mTLS | 题库读、L1/L2/COS 三层缓存 | 碰 PG、检索、组卷、返回媒体二进制 |
+| `question-bank` | Rust + tonic | gRPC | 内网 | 题库导入（RustFS JSON → PG）、题目读取、Redis 读缓存 | 检索、组卷、媒体二进制分发 |
 | `attempt-consumer` | Rust + rdkafka | — | — | attempts 落库 + 画像 + 排行榜（Lua 原子） | 重算答题结果、处理对战 |
 | `battle-result-consumer` | Rust + rdkafka | — | — | 对战战绩落库 + 排行榜（Lua 原子） | 重算胜负、处理单题提交 |
 | `profile-bootstrap-consumer` | Rust + rdkafka | — | — | `user_registered` → profile 创建（唯一写者） | 其他事件 |
 
 **实现状态**：鉴权、用户、推荐、对战、网关与三个 Consumer 已有可运行代码；`gateway` 当前为
 Nginx 模板（未使用 OpenResty Lua，限流与 JWT 黑名单检查仍在计划中）；`battle-service` 的 JWT
-验签与 Redis 撤销订阅仍为 TODO；`question-bank` 尚未实现，仓库内仅保留 `contracts/proto/qbank.proto`
-与 Rust 客户端 `qbank-client`。
+验签与 Redis 撤销订阅仍为 TODO；`question-bank` 已实现为 Rust + tonic 服务：启动时从 RustFS
+拉取大 JSON 题库（SigV4 签名 GET），upsert 到 PostgreSQL `question` schema，读取走 Redis
+读缓存 `qbank:question:{id}`（TTL `QBANK_CACHE_TTL_SEC`，默认 300 秒），本地无 RustFS 时回退
+`deploy/qbank/questions.json`。
 
 **拆分理由**：`user-api-sse` 独立（SSE 长连接、HPA 信号不同）；三个 Consumer 独立（topic 分区数不同，单进程无法独立扩缩）；`recommendation-service` 独立（flusher 后台批量任务与 GraphQL 请求争 PG）；`battle-service` 独立（WS 长连接、有状态、伸缩信号是连接数）。
 

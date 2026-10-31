@@ -22,6 +22,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PW_DEV_DIR="${PW_DEV_DIR:-/tmp/pwdev}"
 PW_ROOT="${PW_ROOT:-/tmp/pwroot}"
 PW_HTTP_PORT="${PW_HTTP_PORT:-8080}"
+QBANK_PORT="${QBANK_PORT:-15051}"
 NGINX_BIN="${NGINX_BIN:-$PW_ROOT/usr/sbin/nginx}"
 DB_SCRIPT="$ROOT/scripts/dev_db.sh"
 
@@ -91,6 +92,43 @@ build_frontend() {
     (cd "$ROOT/frontend" && "${clean_env[@]}" npm run build) || fail "frontend build failed"
 }
 
+# Question images live with the bundle; the gateway serves them as static
+# assets so no object storage is required for local development.
+sync_media() {
+    local source="$ROOT/deploy/qbank/media"
+    [ -d "$source" ] || return 0
+    mkdir -p "$STATIC_DIR/media"
+    cp "$source"/*.svg "$STATIC_DIR/media/"
+}
+
+# gRPC services expose no HTTP health endpoint; wait for the socket instead.
+start_grpc_service() {
+    local name="$1" port="$2"
+    shift 2
+    local bin="$ROOT/backend/target/debug/$name"
+    [ -x "$bin" ] || fail "missing binary: $bin (run scripts/dev_stack.sh up to build)"
+    if port_open "$port"; then
+        note "$name already listening on $port"
+        return 0
+    fi
+    mkdir -p "$PW_DEV_DIR"
+    nohup setsid "${clean_env[@]}" \
+        DATABASE_URL="$DATABASE_URL" \
+        REDIS_URL="$REDIS_URL" \
+        RUST_LOG="${RUST_LOG:-info}" \
+        "$@" \
+        "$bin" >"$PW_DEV_DIR/$name.log" 2>&1 <"/dev/null" &
+    echo $! >"$PW_DEV_DIR/$name.pid"
+    for _ in $(seq 1 50); do
+        if port_open "$port"; then
+            note "$name listening on $port"
+            return 0
+        fi
+        sleep 0.2
+    done
+    fail "$name did not start; see $PW_DEV_DIR/$name.log"
+}
+
 render_gateway() {
     [ -x "$NGINX_BIN" ] || fail "nginx not found at $NGINX_BIN (run scripts/dev_db.sh start)"
     mkdir -p "$NGINX_DIR/logs" "$NGINX_DIR/tmp/body" "$NGINX_DIR/tmp/proxy" \
@@ -148,12 +186,17 @@ up() {
     [ -x "$DB_SCRIPT" ] || fail "missing $DB_SCRIPT"
     "${clean_env[@]}" bash "$DB_SCRIPT" start || fail "database startup failed"
     build_backend
+    start_grpc_service question-bank "$QBANK_PORT" \
+        QBANK_BIND_ADDR="127.0.0.1:$QBANK_PORT" \
+        QBANK_BUNDLE="$ROOT/deploy/qbank/questions.json" \
+        QBANK_MEDIA_BASE=/media
     start_service auth-service 8081 /health AUTH_BIND_ADDR=127.0.0.1:8081 AUTH_COOKIE_SECURE=false
     start_service user-api 8082 /health USER_API_BIND_ADDR=127.0.0.1:8082
     start_service user-api-sse 8085 /health PORT=8085 SSE_BIND_ADDR=127.0.0.1:8085
     start_service recommendation-service 8086 /health REC_PORT=8086 PORT=8086
     start_service battle-service 8087 /health BATTLE_BIND_ADDR=127.0.0.1:8087
     build_frontend
+    sync_media
     render_gateway
     start_gateway
     note "site ready at http://127.0.0.1:$PW_HTTP_PORT"
@@ -171,19 +214,20 @@ stop_pid() {
 }
 
 down() {
-    if [ -f "$NGINX_DIR/logs/nginx.pid" ]; then
+    if [ -f "$NGINX_DIR/nginx.pid" ]; then
         "${clean_env[@]}" "$NGINX_BIN" -c "$NGINX_CONF" -p "$NGINX_DIR" -s quit 2>/dev/null \
             && note "stopped gateway"
     fi
-    for name in battle-service recommendation-service user-api-sse user-api auth-service; do
+    for name in battle-service recommendation-service user-api-sse user-api auth-service \
+                question-bank; do
         stop_pid "$name"
     done
     note "services stopped; databases are left running (scripts/dev_db.sh stop)"
 }
 
 status() {
-    for entry in "auth-service 8081" "user-api 8082" "user-api-sse 8085" \
-                 "recommendation-service 8086" "battle-service 8087" \
+    for entry in "question-bank $QBANK_PORT" "auth-service 8081" "user-api 8082" \
+                 "user-api-sse 8085" "recommendation-service 8086" "battle-service 8087" \
                  "gateway $PW_HTTP_PORT"; do
         set -- $entry
         if port_open "$2"; then

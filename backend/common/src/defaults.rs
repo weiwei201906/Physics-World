@@ -122,6 +122,10 @@ pub const REDIS_URL: &str = "redis://127.0.0.1:16379/0";
 
 pub const QBANK_GRPC_ADDR: &str = "http://127.0.0.1:50051";
 pub const QBANK_GRPC_TIMEOUT_SEC: i64 = 30;
+pub const QBANK_BIND_ADDR: &str = "0.0.0.0:15051";
+pub const QBANK_BUNDLE_PATH: &str = "deploy/qbank/questions.json";
+pub const QBANK_MEDIA_BASE: &str = "/media";
+pub const QBANK_CACHE_TTL_SEC: u64 = 300;
 
 pub const LOG_LEVEL: &str = "info";
 pub const SERVER_BIND_ADDR: &str = "0.0.0.0:8080";

@@ -174,7 +174,7 @@ fi
 
 SSE_UPSTREAM="${SSE_UPSTREAM:-127.0.0.1:${SSE_PORT:-8085}}"
 REC_UPSTREAM="${REC_UPSTREAM:-127.0.0.1:${REC_PORT:-8086}}"
-BATTLE_UPSTREAM="${BATTLE_UPSTREAM:-127.0.0.1:${BATTLE_PORT:-8087}}"
+BATTLE_UPSTREAM="${BATTLE_UPSTREAM:-127.0.0.1:${BATTLE_PORT:-18099}}"
 
 GATEWAY_PORT="$GATEWAY_PORT" AUTH_UPSTREAM="127.0.0.1:$AUTH_PORT" \
 USER_API_UPSTREAM="127.0.0.1:$USER_API_PORT" GATEWAY_STATIC_DIR="$GATEWAY_STATIC_DIR" \
@@ -235,7 +235,7 @@ PASSWORD='S3cretPassw0rd!'
 expect_status "register" 201 "POST" "$GW/auth/register" \
     -H 'Content-Type: application/json' \
     --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"nickname\":\"Smoke\"}"
-USER_ID=$(jq -r '.id // empty' "$BODY")
+USER_ID=$(jq -r '.user.id // empty' "$BODY")
 expect_status "register duplicate" 409 "POST" "$GW/auth/register" \
     -H 'Content-Type: application/json' \
     --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}"
@@ -244,8 +244,8 @@ expect_status "login" 200 "POST" "$GW/auth/login" \
     -H 'Content-Type: application/json' \
     --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}"
 cp "$BODY" "$RUN_DIR/login.json"
-TOKEN=$(jq -r '.access_token // empty' "$RUN_DIR/login.json")
-REFRESH=$(jq -r '.refresh_token // empty' "$RUN_DIR/login.json")
+TOKEN=$(jq -r '.accessToken // empty' "$RUN_DIR/login.json")
+REFRESH=$(jq -r '.refreshToken // empty' "$RUN_DIR/login.json")
 LOGIN_USER=$(jq -r '.user.id // empty' "$RUN_DIR/login.json")
 [ -n "$TOKEN" ] && ok "login returned access token" || bad "login returned no access token"
 [ "$USER_ID" = "$LOGIN_USER" ] && ok "login user matches registration" \
@@ -334,7 +334,7 @@ expect_status "invalid bearer is rejected" 401 "POST" "$GW/graphql" \
 expect_status "config snapshot" 200 "GET" "$GW/config" -H "$AUTHZ"
 expect_json "config snapshot has entries" '.entries | length'
 expect_status "graphiql" 200 "GET" "$GW/graphiql" -H "$AUTHZ"
-expect_status "battle websocket unavailable" 503 "GET" "$GW/ws/battle"
+expect_status "battle upstream unavailable" 502 "GET" "$GW/ws/battle"
 expect_status "spa root" 200 "GET" "$GW/"
 if grep -q 'id="app"' "$BODY"; then ok "spa root serves index.html"; \
     else bad "spa root did not serve index.html"; fi
@@ -343,15 +343,15 @@ if grep -q 'id="app"' "$BODY"; then ok "spa fallback serves index.html"; \
     else bad "spa fallback did not serve index.html"; fi
 
 printf '\nrefresh and logout\n'
-expect_status "refresh via cookie" 200 "POST" "$GW/auth/refresh" \
+expect_status "refresh via cookie" 200 "POST" "$GW/auth/refresh-token" \
     -b "$RUN_DIR/cookies.txt" -H 'Content-Type: application/json' --data '{}'
-REFRESH2=$(jq -r '.refresh_token // empty' "$BODY")
+REFRESH2=$(jq -r '.refreshToken // empty' "$BODY")
 [ -n "$REFRESH2" ] && ok "refresh rotated the token" || bad "refresh returned no token"
 if [ -n "$REFRESH2" ]; then
     expect_status "logout" 204 "POST" "$GW/auth/logout" \
         -H 'Content-Type: application/json' \
         --data "{\"refresh_token\":\"$REFRESH2\"}"
-    expect_status "refresh after logout" 401 "POST" "$GW/auth/refresh" \
+    expect_status "refresh after logout" 401 "POST" "$GW/auth/refresh-token" \
         -H 'Content-Type: application/json' \
         --data "{\"refresh_token\":\"$REFRESH2\"}"
 fi
@@ -393,7 +393,7 @@ fi
 expect_status "login after restart" 200 "POST" "$GW/auth/login" \
     -H 'Content-Type: application/json' \
     --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}"
-NEW_TOKEN=$(jq -r '.access_token // empty' "$BODY")
+NEW_TOKEN=$(jq -r '.accessToken // empty' "$BODY")
 [ -n "$NEW_TOKEN" ] && ok "restart login returned access token" \
     || bad "restart login returned no access token"
 

@@ -1,0 +1,786 @@
+{
+  "chapters": [
+    {
+      "id": "mechanics",
+      "name": "Mechanics",
+      "position": 0,
+      "questions": [
+        {
+          "id": "mechanics-1",
+          "difficulty": 1,
+          "stem": "Mechanics problem 1: choose the correct statement.",
+          "explanation": "Statement A is the only consistent choice.",
+          "answer": "a",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 1"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 1"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 1"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 1"
+            }
+          ],
+          "media": [
+            {
+              "file": "mechanics-incline.svg",
+              "alt": "Block sliding down an inclined plane",
+              "variant": "default",
+              "width": 640,
+              "height": 400,
+              "mime": "image/svg+xml"
+            }
+          ]
+        },
+        {
+          "id": "mechanics-2",
+          "difficulty": 2,
+          "stem": "Mechanics problem 2: choose the correct statement.",
+          "explanation": "Statement B is the only consistent choice.",
+          "answer": "b",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 2"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 2"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 2"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 2"
+            }
+          ],
+          "media": [
+            {
+              "file": "mechanics-pulley.svg",
+              "alt": "Two masses connected by a rope over a pulley",
+              "variant": "default",
+              "width": 640,
+              "height": 400,
+              "mime": "image/svg+xml"
+            }
+          ]
+        },
+        {
+          "id": "mechanics-3",
+          "difficulty": 3,
+          "stem": "Mechanics problem 3: choose the correct statement.",
+          "explanation": "Statement C is the only consistent choice.",
+          "answer": "c",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 3"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 3"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 3"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 3"
+            }
+          ],
+          "media": [
+            {
+              "file": "mechanics-spring.svg",
+              "alt": "Mass attached to a spring on a horizontal surface",
+              "variant": "default",
+              "width": 640,
+              "height": 400,
+              "mime": "image/svg+xml"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "thermodynamics",
+      "name": "Thermodynamics",
+      "position": 1,
+      "questions": [
+        {
+          "id": "thermodynamics-1",
+          "difficulty": 1,
+          "stem": "Thermodynamics problem 1: choose the correct statement.",
+          "explanation": "Statement A is the only consistent choice.",
+          "answer": "a",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 1"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 1"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 1"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 1"
+            }
+          ]
+        },
+        {
+          "id": "thermodynamics-2",
+          "difficulty": 2,
+          "stem": "Thermodynamics problem 2: choose the correct statement.",
+          "explanation": "Statement B is the only consistent choice.",
+          "answer": "b",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 2"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 2"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 2"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 2"
+            }
+          ]
+        },
+        {
+          "id": "thermodynamics-3",
+          "difficulty": 3,
+          "stem": "Thermodynamics problem 3: choose the correct statement.",
+          "explanation": "Statement C is the only consistent choice.",
+          "answer": "c",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 3"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 3"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 3"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "optics",
+      "name": "Optics",
+      "position": 2,
+      "questions": [
+        {
+          "id": "optics-1",
+          "difficulty": 1,
+          "stem": "Optics problem 1: choose the correct statement.",
+          "explanation": "Statement A is the only consistent choice.",
+          "answer": "a",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 1"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 1"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 1"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 1"
+            }
+          ]
+        },
+        {
+          "id": "optics-2",
+          "difficulty": 2,
+          "stem": "Optics problem 2: choose the correct statement.",
+          "explanation": "Statement B is the only consistent choice.",
+          "answer": "b",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 2"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 2"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 2"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 2"
+            }
+          ]
+        },
+        {
+          "id": "optics-3",
+          "difficulty": 3,
+          "stem": "Optics problem 3: choose the correct statement.",
+          "explanation": "Statement C is the only consistent choice.",
+          "answer": "c",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 3"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 3"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 3"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "electromagnetism",
+      "name": "Electromagnetism",
+      "position": 3,
+      "questions": [
+        {
+          "id": "electromagnetism-1",
+          "difficulty": 1,
+          "stem": "Electromagnetism problem 1: choose the correct statement.",
+          "explanation": "Statement A is the only consistent choice.",
+          "answer": "a",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 1"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 1"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 1"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 1"
+            }
+          ]
+        },
+        {
+          "id": "electromagnetism-2",
+          "difficulty": 2,
+          "stem": "Electromagnetism problem 2: choose the correct statement.",
+          "explanation": "Statement B is the only consistent choice.",
+          "answer": "b",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 2"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 2"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 2"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 2"
+            }
+          ]
+        },
+        {
+          "id": "electromagnetism-3",
+          "difficulty": 3,
+          "stem": "Electromagnetism problem 3: choose the correct statement.",
+          "explanation": "Statement C is the only consistent choice.",
+          "answer": "c",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 3"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 3"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 3"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "modern",
+      "name": "Modern Physics",
+      "position": 4,
+      "questions": [
+        {
+          "id": "modern-1",
+          "difficulty": 1,
+          "stem": "Modern Physics problem 1: choose the correct statement.",
+          "explanation": "Statement A is the only consistent choice.",
+          "answer": "a",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 1"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 1"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 1"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 1"
+            }
+          ]
+        },
+        {
+          "id": "modern-2",
+          "difficulty": 2,
+          "stem": "Modern Physics problem 2: choose the correct statement.",
+          "explanation": "Statement B is the only consistent choice.",
+          "answer": "b",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 2"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 2"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 2"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 2"
+            }
+          ]
+        },
+        {
+          "id": "modern-3",
+          "difficulty": 3,
+          "stem": "Modern Physics problem 3: choose the correct statement.",
+          "explanation": "Statement C is the only consistent choice.",
+          "answer": "c",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 3"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 3"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 3"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "waves",
+      "name": "Waves",
+      "position": 5,
+      "questions": [
+        {
+          "id": "waves-1",
+          "difficulty": 1,
+          "stem": "Waves problem 1: choose the correct statement.",
+          "explanation": "Statement A is the only consistent choice.",
+          "answer": "a",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 1"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 1"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 1"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 1"
+            }
+          ]
+        },
+        {
+          "id": "waves-2",
+          "difficulty": 2,
+          "stem": "Waves problem 2: choose the correct statement.",
+          "explanation": "Statement B is the only consistent choice.",
+          "answer": "b",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 2"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 2"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 2"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 2"
+            }
+          ]
+        },
+        {
+          "id": "waves-3",
+          "difficulty": 3,
+          "stem": "Waves problem 3: choose the correct statement.",
+          "explanation": "Statement C is the only consistent choice.",
+          "answer": "c",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 3"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 3"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 3"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fluids",
+      "name": "Fluids",
+      "position": 6,
+      "questions": [
+        {
+          "id": "fluids-1",
+          "difficulty": 1,
+          "stem": "Fluids problem 1: choose the correct statement.",
+          "explanation": "Statement A is the only consistent choice.",
+          "answer": "a",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 1"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 1"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 1"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 1"
+            }
+          ]
+        },
+        {
+          "id": "fluids-2",
+          "difficulty": 2,
+          "stem": "Fluids problem 2: choose the correct statement.",
+          "explanation": "Statement B is the only consistent choice.",
+          "answer": "b",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 2"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 2"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 2"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 2"
+            }
+          ]
+        },
+        {
+          "id": "fluids-3",
+          "difficulty": 3,
+          "stem": "Fluids problem 3: choose the correct statement.",
+          "explanation": "Statement C is the only consistent choice.",
+          "answer": "c",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 3"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 3"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 3"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "experiments",
+      "name": "Experiments",
+      "position": 7,
+      "questions": [
+        {
+          "id": "experiments-1",
+          "difficulty": 1,
+          "stem": "Experiments problem 1: choose the correct statement.",
+          "explanation": "Statement A is the only consistent choice.",
+          "answer": "a",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 1"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 1"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 1"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 1"
+            }
+          ]
+        },
+        {
+          "id": "experiments-2",
+          "difficulty": 2,
+          "stem": "Experiments problem 2: choose the correct statement.",
+          "explanation": "Statement B is the only consistent choice.",
+          "answer": "b",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 2"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 2"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 2"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 2"
+            }
+          ]
+        },
+        {
+          "id": "experiments-3",
+          "difficulty": 3,
+          "stem": "Experiments problem 3: choose the correct statement.",
+          "explanation": "Statement C is the only consistent choice.",
+          "answer": "c",
+          "options": [
+            {
+              "id": "a",
+              "label": "A",
+              "text": "Statement 1 for problem 3"
+            },
+            {
+              "id": "b",
+              "label": "B",
+              "text": "Statement 2 for problem 3"
+            },
+            {
+              "id": "c",
+              "label": "C",
+              "text": "Statement 3 for problem 3"
+            },
+            {
+              "id": "d",
+              "label": "D",
+              "text": "Statement 4 for problem 3"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

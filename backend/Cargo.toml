@@ -10,6 +10,7 @@ members = [
     "battle-result-consumer",
     "profile-bootstrap-consumer",
     "qbank-client",
+    "question-bank",
 ]
 resolver = "2"
 

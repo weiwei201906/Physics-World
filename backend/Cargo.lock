@@ -2100,6 +2100,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "question-bank"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "common",
+ "hex",
+ "hmac",
+ "http",
+ "http-body-util",
+ "hyper-util",
+ "prost",
+ "qbank-client",
+ "redis",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tracing",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"

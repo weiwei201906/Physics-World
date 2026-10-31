@@ -31,11 +31,12 @@
 | `user-api-sse` | `/events` 长连接推送 |
 | `recommendation-service` | 推荐读取与用户画像 |
 | `battle-service` | 匹配、对战状态机、实时广播（WebSocket） |
+| `question-bank` | 题库导入与读取（gRPC）：RustFS 大 JSON → PostgreSQL，Redis 读缓存 |
 | `attempt-consumer` | 答题提交落库、画像与排行榜更新 |
 | `battle-result-consumer` | 对战结果落库 |
 | `profile-bootstrap-consumer` | 注册后的画像初始化 |
 
-题库服务尚未实现，仓库内保留 `contracts/proto/qbank.proto` 与 Rust 客户端 `backend/qbank-client` 作为稳定契约。完整设计见 [docs/architecture.md](docs/architecture.md)。
+题库以 RustFS 上的大 JSON 为源：`question-bank` 启动时通过 SigV4 拉取题库文件，反序列化后 upsert 到 PostgreSQL（`question.chapters/questions/question_versions`），题目读取走 Redis 读缓存（`qbank:question:{id}`，默认 TTL 300 秒），导入完成后失效缓存。本地没有 RustFS 时回退到 `deploy/qbank/questions.json`。契约见 [contracts/proto/qbank.proto](contracts/proto/qbank.proto)，客户端为 `backend/qbank-client`，完整设计见 [docs/architecture.md](docs/architecture.md)。
 
 ## 目录结构
 
@@ -53,6 +54,7 @@ Physics-World/
 │   ├── battle-result-consumer/
 │   ├── profile-bootstrap-consumer/
 │   ├── qbank-client/         # 题库 gRPC 客户端契约
+│   ├── question-bank/        # 题库服务：RustFS JSON 导入、PG 存储、Redis 缓存
 │   └── migrations/           # PostgreSQL 建表脚本
 ├── contracts/
 │   ├── graphql/              # user-api 与 recommendation SDL
