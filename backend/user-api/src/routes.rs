@@ -7,6 +7,7 @@ use axum::http::HeaderMap;
 use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use common::error::Result;
 use common::identity::Identity;
 use tower_http::trace::TraceLayer;
 
@@ -36,8 +37,8 @@ async fn health() -> Json<HealthResponse> {
     })
 }
 
-async fn config_snapshot(State(app): State<App>) -> Json<serde_json::Value> {
-    Json(app.state.store.config_snapshot())
+async fn config_snapshot(State(app): State<App>) -> Result<Json<serde_json::Value>> {
+    Ok(Json(app.state.store.config_snapshot().await?))
 }
 
 async fn graphiql() -> impl IntoResponse {

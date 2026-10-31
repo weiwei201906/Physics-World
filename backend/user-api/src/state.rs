@@ -7,19 +7,23 @@ use common::clock::Clock;
 use common::settings::UserApiSettings;
 
 use crate::graphql::{MutationRoot, QueryRoot};
-use crate::store::Store;
+use crate::store::DomainStore;
 
 pub type UserApiSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub store: Store,
+    pub store: Arc<dyn DomainStore>,
     pub settings: Arc<UserApiSettings>,
     pub clock: Arc<dyn Clock>,
 }
 
 impl AppState {
-    pub fn new(store: Store, settings: UserApiSettings, clock: Arc<dyn Clock>) -> Self {
+    pub fn new(
+        store: Arc<dyn DomainStore>,
+        settings: UserApiSettings,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
         Self {
             store,
             settings: Arc::new(settings),

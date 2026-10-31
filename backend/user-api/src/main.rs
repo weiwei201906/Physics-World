@@ -4,9 +4,11 @@ use std::sync::Arc;
 use common::clock::SystemClock;
 use common::config::ConfigLoader;
 use common::defaults;
-use common::settings::UserApiSettings;
+use common::settings::{DatabaseSettings, UserApiSettings};
 use common::telemetry::{self, TelemetryConfig};
-use user_api::store::Store;
+use redis::aio::ConnectionManager;
+use sqlx::postgres::PgPoolOptions;
+use user_api::pg_store::PgStore;
 use user_api::{router, App, AppState};
 
 #[tokio::main]
@@ -24,7 +26,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::warn!(count = invalid.len(), keys = ?invalid, "config keys invalid");
     }
 
-    let state = AppState::new(Store::seeded(), settings, Arc::new(SystemClock));
+    let database = DatabaseSettings::from_env("user_api");
+    let pool = PgPoolOptions::new()
+        .max_connections(settings.pg_pool_size_per_pod)
+        .connect(&database.database_url)
+        .await?;
+    sqlx::migrate!("../migrations").run(&pool).await?;
+    let redis_client = redis::Client::open(database.redis_url.clone())?;
+    let redis = ConnectionManager::new(redis_client).await?;
+    let store = PgStore::new(pool, redis);
+    store.seed_if_empty().await?;
+
+    let state = AppState::new(Arc::new(store), settings, Arc::new(SystemClock));
     let app = App::new(state);
 
     let bind =

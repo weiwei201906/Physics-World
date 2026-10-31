@@ -48,11 +48,14 @@ impl QueryRoot {
     async fn me(&self, ctx: &Context<'_>) -> async_graphql::Result<UserView> {
         let identity = require_identity(ctx)?;
         let state = state(ctx)?;
-        Ok(state.store.profile(
-            identity.user_id,
-            identity.email.as_deref(),
-            state.clock.now(),
-        ))
+        gql(state
+            .store
+            .profile(
+                identity.user_id,
+                identity.email.as_deref(),
+                state.clock.now(),
+            )
+            .await)
     }
 
     async fn chapters(
@@ -60,7 +63,7 @@ impl QueryRoot {
         ctx: &Context<'_>,
     ) -> async_graphql::Result<Vec<crate::store::Chapter>> {
         let state = state(ctx)?;
-        Ok(state.store.chapters())
+        gql(state.store.chapters().await)
     }
 
     async fn quiz_session(
@@ -70,7 +73,7 @@ impl QueryRoot {
     ) -> async_graphql::Result<Option<QuizSession>> {
         let identity = require_identity(ctx)?;
         let state = state(ctx)?;
-        Ok(state.store.session(id, identity.user_id))
+        gql(state.store.session(id, identity.user_id).await)
     }
 
     async fn session_question(
@@ -84,6 +87,7 @@ impl QueryRoot {
         Ok(state
             .store
             .question_in_session(session_id, identity.user_id, index)
+            .await
             .ok())
     }
 
@@ -95,7 +99,7 @@ impl QueryRoot {
         size: i32,
     ) -> async_graphql::Result<LeaderboardPage> {
         let state = state(ctx)?;
-        Ok(state.store.leaderboard(period, page, size))
+        gql(state.store.leaderboard(period, page, size).await)
     }
 
     async fn my_rank(
@@ -105,7 +109,7 @@ impl QueryRoot {
     ) -> async_graphql::Result<RankSummary> {
         let identity = require_identity(ctx)?;
         let state = state(ctx)?;
-        Ok(state.store.my_rank(period, identity.user_id))
+        gql(state.store.my_rank(period, identity.user_id).await)
     }
 
     async fn admin_configs(
@@ -115,7 +119,7 @@ impl QueryRoot {
     ) -> async_graphql::Result<Vec<crate::store::ConfigEntry>> {
         require_admin(ctx)?;
         let state = state(ctx)?;
-        Ok(state.store.configs(&namespace))
+        gql(state.store.configs(&namespace).await)
     }
 
     async fn admin_config_schemas(
@@ -125,7 +129,7 @@ impl QueryRoot {
     ) -> async_graphql::Result<Vec<ConfigSchemaEntry>> {
         require_admin(ctx)?;
         let state = state(ctx)?;
-        Ok(state.store.config_schemas(namespace.as_deref()))
+        gql(state.store.config_schemas(namespace.as_deref()).await)
     }
 
     async fn admin_config_history(
@@ -137,7 +141,7 @@ impl QueryRoot {
     ) -> async_graphql::Result<Vec<crate::store::ConfigAuditEntry>> {
         require_admin(ctx)?;
         let state = state(ctx)?;
-        Ok(state.store.config_history(&namespace, &key, limit))
+        gql(state.store.config_history(&namespace, &key, limit).await)
     }
 
     async fn admin_question_versions(
@@ -147,7 +151,7 @@ impl QueryRoot {
     ) -> async_graphql::Result<Vec<QuestionVersion>> {
         require_admin(ctx)?;
         let state = state(ctx)?;
-        Ok(state.store.question_versions(question_id.as_ref()))
+        gql(state.store.question_versions(question_id.as_ref()).await)
     }
 }
 
@@ -232,14 +236,16 @@ impl MutationRoot {
     ) -> async_graphql::Result<QuizSession> {
         let identity = require_identity(ctx)?;
         let state = state(ctx)?;
-        let session = gql(state.store.start_session(
-            identity.user_id,
-            mode,
-            chapter_id.map(|id| id.to_string()),
-            state.settings.session_max_questions,
-            state.clock.now(),
-        ))?;
-        Ok(session)
+        gql(state
+            .store
+            .start_session(
+                identity.user_id,
+                mode,
+                chapter_id.map(|id| id.to_string()),
+                state.settings.session_max_questions,
+                state.clock.now(),
+            )
+            .await)
     }
 
     async fn submit_attempt(
@@ -249,13 +255,16 @@ impl MutationRoot {
     ) -> async_graphql::Result<SubmitAttemptPayload> {
         let identity = require_identity(ctx)?;
         let state = state(ctx)?;
-        gql(state.store.submit_attempt(
-            input.session_id,
-            identity.user_id,
-            input.question_id.as_ref(),
-            &input.answer,
-            state.clock.now(),
-        ))
+        gql(state
+            .store
+            .submit_attempt(
+                input.session_id,
+                identity.user_id,
+                input.question_id.as_ref(),
+                &input.answer,
+                state.clock.now(),
+            )
+            .await)
     }
 
     async fn update_profile(
@@ -265,13 +274,16 @@ impl MutationRoot {
     ) -> async_graphql::Result<UserView> {
         let identity = require_identity(ctx)?;
         let state = state(ctx)?;
-        Ok(state.store.update_profile(
-            identity.user_id,
-            identity.email.as_deref(),
-            input.nickname,
-            input.avatar_url,
-            state.clock.now(),
-        ))
+        gql(state
+            .store
+            .update_profile(
+                identity.user_id,
+                identity.email.as_deref(),
+                input.nickname,
+                input.avatar_url,
+                state.clock.now(),
+            )
+            .await)
     }
 
     async fn admin_upsert_config(
@@ -283,13 +295,16 @@ impl MutationRoot {
     ) -> async_graphql::Result<crate::store::ConfigMutationPayload> {
         let identity = require_admin(ctx)?;
         let state = state(ctx)?;
-        Ok(state.store.upsert_config(
-            &namespace,
-            &key,
-            &value,
-            identity.user_id,
-            state.clock.now(),
-        ))
+        gql(state
+            .store
+            .upsert_config(
+                &namespace,
+                &key,
+                &value,
+                identity.user_id,
+                state.clock.now(),
+            )
+            .await)
     }
 
     async fn admin_delete_config(
@@ -300,9 +315,10 @@ impl MutationRoot {
     ) -> async_graphql::Result<crate::store::ConfigMutationPayload> {
         let identity = require_admin(ctx)?;
         let state = state(ctx)?;
-        Ok(state
+        gql(state
             .store
-            .delete_config(&namespace, &key, identity.user_id, state.clock.now()))
+            .delete_config(&namespace, &key, identity.user_id, state.clock.now())
+            .await)
     }
 
     async fn admin_register_config_schema(
@@ -320,7 +336,7 @@ impl MutationRoot {
             default_value: input.default_value,
             description: input.description,
         };
-        gql(state.store.register_schema(schema))
+        gql(state.store.register_schema(schema).await)
     }
 
     async fn admin_rollback_config(
@@ -332,13 +348,16 @@ impl MutationRoot {
     ) -> async_graphql::Result<crate::store::ConfigMutationPayload> {
         let identity = require_admin(ctx)?;
         let state = state(ctx)?;
-        gql(state.store.rollback_config(
-            &namespace,
-            &key,
-            version,
-            identity.user_id,
-            state.clock.now(),
-        ))
+        gql(state
+            .store
+            .rollback_config(
+                &namespace,
+                &key,
+                version,
+                identity.user_id,
+                state.clock.now(),
+            )
+            .await)
     }
 
     async fn admin_upload_question(
@@ -349,13 +368,16 @@ impl MutationRoot {
         require_admin(ctx)?;
         let state = state(ctx)?;
         let (content, correct_option_id) = split_content(input.content);
-        gql(state.store.upload_question(
-            &input.chapter_id,
-            input.difficulty,
-            content,
-            correct_option_id,
-            state.clock.now(),
-        ))
+        gql(state
+            .store
+            .upload_question(
+                &input.chapter_id,
+                input.difficulty,
+                content,
+                correct_option_id,
+                state.clock.now(),
+            )
+            .await)
     }
 
     async fn admin_update_question(
@@ -367,14 +389,17 @@ impl MutationRoot {
         require_admin(ctx)?;
         let state = state(ctx)?;
         let (content, correct_option_id) = split_content(input.content);
-        gql(state.store.update_question(
-            question_id.as_ref(),
-            &input.chapter_id,
-            input.difficulty,
-            content,
-            correct_option_id,
-            state.clock.now(),
-        ))
+        gql(state
+            .store
+            .update_question(
+                question_id.as_ref(),
+                &input.chapter_id,
+                input.difficulty,
+                content,
+                correct_option_id,
+                state.clock.now(),
+            )
+            .await)
     }
 
     async fn admin_soft_delete_question(
@@ -386,6 +411,7 @@ impl MutationRoot {
         let state = state(ctx)?;
         gql(state
             .store
-            .soft_delete_question(question_id.as_ref(), state.clock.now()))
+            .soft_delete_question(question_id.as_ref(), state.clock.now())
+            .await)
     }
 }

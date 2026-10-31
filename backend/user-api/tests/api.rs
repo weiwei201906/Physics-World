@@ -10,7 +10,7 @@ use common::settings::UserApiSettings;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
-use user_api::store::Store;
+use user_api::store::MemoryStore;
 use user_api::{router, App, AppState};
 use uuid::Uuid;
 
@@ -18,7 +18,11 @@ fn harness() -> (App, Arc<FakeClock>) {
     let mut settings = UserApiSettings::from_config(&ConfigLoader::new("user_api", HashMap::new()));
     settings.session_max_questions = 5;
     let clock = Arc::new(FakeClock::new(Utc::now()));
-    let state = AppState::new(Store::seeded(), settings, clock.clone() as Arc<dyn Clock>);
+    let state = AppState::new(
+        Arc::new(MemoryStore::seeded()),
+        settings,
+        clock.clone() as Arc<dyn Clock>,
+    );
     (App::new(state), clock)
 }
 

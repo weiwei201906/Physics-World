@@ -2,6 +2,7 @@
 //! runtime configuration.
 
 pub mod graphql;
+pub mod pg_store;
 pub mod routes;
 pub mod state;
 pub mod store;

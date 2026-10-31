@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_graphql::{Enum, SimpleObject, ID};
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use common::error::{AppError, Result};
 use uuid::Uuid;
@@ -44,6 +45,25 @@ impl Period {
     }
 }
 
+impl QuizMode {
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            QuizMode::Practice => "PRACTICE",
+            QuizMode::Exam => "EXAM",
+            QuizMode::Chapter => "CHAPTER",
+        }
+    }
+
+    pub fn from_db_str(value: &str) -> Option<Self> {
+        match value {
+            "PRACTICE" => Some(QuizMode::Practice),
+            "EXAM" => Some(QuizMode::Exam),
+            "CHAPTER" => Some(QuizMode::Chapter),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Enum, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SessionStatus {
     #[graphql(name = "ACTIVE")]
@@ -52,6 +72,25 @@ pub enum SessionStatus {
     Completed,
     #[graphql(name = "ABANDONED")]
     Abandoned,
+}
+
+impl SessionStatus {
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            SessionStatus::Active => "ACTIVE",
+            SessionStatus::Completed => "COMPLETED",
+            SessionStatus::Abandoned => "ABANDONED",
+        }
+    }
+
+    pub fn from_db_str(value: &str) -> Option<Self> {
+        match value {
+            "ACTIVE" => Some(SessionStatus::Active),
+            "COMPLETED" => Some(SessionStatus::Completed),
+            "ABANDONED" => Some(SessionStatus::Abandoned),
+            _ => None,
+        }
+    }
 }
 
 #[derive(SimpleObject, Clone, Debug)]
@@ -224,11 +263,11 @@ struct Inner {
 }
 
 #[derive(Debug, Clone)]
-pub struct Store {
+pub struct MemoryStore {
     inner: Arc<Mutex<Inner>>,
 }
 
-impl Store {
+impl MemoryStore {
     pub fn seeded() -> Self {
         let chapters = chapter_seed();
         let mut questions = HashMap::new();
@@ -1081,5 +1120,272 @@ fn self_delete(
         degraded: false,
         entry: None,
         error_message: None,
+    }
+}
+
+/// Persistence boundary for the GraphQL surface.
+#[async_trait]
+pub trait DomainStore: Send + Sync {
+    async fn chapters(&self) -> Result<Vec<Chapter>>;
+    async fn question(&self, id: &str) -> Result<Option<Question>>;
+    async fn profile(
+        &self,
+        user_id: Uuid,
+        email: Option<&str>,
+        now: DateTime<Utc>,
+    ) -> Result<UserView>;
+    async fn update_profile(
+        &self,
+        user_id: Uuid,
+        email: Option<&str>,
+        nickname: Option<String>,
+        avatar_url: Option<String>,
+        now: DateTime<Utc>,
+    ) -> Result<UserView>;
+    async fn start_session(
+        &self,
+        user_id: Uuid,
+        mode: QuizMode,
+        chapter_id: Option<String>,
+        limit: u32,
+        now: DateTime<Utc>,
+    ) -> Result<QuizSession>;
+    async fn session(&self, id: Uuid, user_id: Uuid) -> Result<Option<QuizSession>>;
+    async fn question_in_session(
+        &self,
+        session_id: Uuid,
+        user_id: Uuid,
+        index: i32,
+    ) -> Result<Question>;
+    async fn submit_attempt(
+        &self,
+        session_id: Uuid,
+        user_id: Uuid,
+        question_id: &str,
+        answer: &str,
+        now: DateTime<Utc>,
+    ) -> Result<SubmitAttemptPayload>;
+    async fn leaderboard(&self, period: Period, page: i32, size: i32) -> Result<LeaderboardPage>;
+    async fn my_rank(&self, period: Period, user_id: Uuid) -> Result<RankSummary>;
+    async fn configs(&self, namespace: &str) -> Result<Vec<ConfigEntry>>;
+    async fn config_schemas(&self, namespace: Option<&str>) -> Result<Vec<ConfigSchemaEntry>>;
+    async fn upsert_config(
+        &self,
+        namespace: &str,
+        key: &str,
+        value: &str,
+        changed_by: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<ConfigMutationPayload>;
+    async fn delete_config(
+        &self,
+        namespace: &str,
+        key: &str,
+        changed_by: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<ConfigMutationPayload>;
+    async fn rollback_config(
+        &self,
+        namespace: &str,
+        key: &str,
+        version: i32,
+        changed_by: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<ConfigMutationPayload>;
+    async fn config_history(
+        &self,
+        namespace: &str,
+        key: &str,
+        limit: i32,
+    ) -> Result<Vec<ConfigAuditEntry>>;
+    async fn register_schema(&self, schema: ConfigSchemaEntry) -> Result<ConfigSchemaEntry>;
+    async fn upload_question(
+        &self,
+        chapter_id: &str,
+        difficulty: i32,
+        content: QuestionContent,
+        correct_option_id: String,
+        now: DateTime<Utc>,
+    ) -> Result<QuestionVersion>;
+    async fn update_question(
+        &self,
+        question_id: &str,
+        chapter_id: &str,
+        difficulty: i32,
+        content: QuestionContent,
+        correct_option_id: String,
+        now: DateTime<Utc>,
+    ) -> Result<QuestionVersion>;
+    async fn soft_delete_question(&self, question_id: &str, now: DateTime<Utc>) -> Result<bool>;
+    async fn question_versions(&self, question_id: &str) -> Result<Vec<QuestionVersion>>;
+    async fn config_snapshot(&self) -> Result<serde_json::Value>;
+}
+
+#[async_trait]
+impl DomainStore for MemoryStore {
+    async fn chapters(&self) -> Result<Vec<Chapter>> {
+        Ok(self.chapters())
+    }
+
+    async fn question(&self, id: &str) -> Result<Option<Question>> {
+        Ok(self.question(id))
+    }
+
+    async fn profile(
+        &self,
+        user_id: Uuid,
+        email: Option<&str>,
+        now: DateTime<Utc>,
+    ) -> Result<UserView> {
+        Ok(self.profile(user_id, email, now))
+    }
+
+    async fn update_profile(
+        &self,
+        user_id: Uuid,
+        email: Option<&str>,
+        nickname: Option<String>,
+        avatar_url: Option<String>,
+        now: DateTime<Utc>,
+    ) -> Result<UserView> {
+        Ok(self.update_profile(user_id, email, nickname, avatar_url, now))
+    }
+
+    async fn start_session(
+        &self,
+        user_id: Uuid,
+        mode: QuizMode,
+        chapter_id: Option<String>,
+        limit: u32,
+        now: DateTime<Utc>,
+    ) -> Result<QuizSession> {
+        self.start_session(user_id, mode, chapter_id, limit, now)
+    }
+
+    async fn session(&self, id: Uuid, user_id: Uuid) -> Result<Option<QuizSession>> {
+        Ok(self.session(id, user_id))
+    }
+
+    async fn question_in_session(
+        &self,
+        session_id: Uuid,
+        user_id: Uuid,
+        index: i32,
+    ) -> Result<Question> {
+        self.question_in_session(session_id, user_id, index)
+    }
+
+    async fn submit_attempt(
+        &self,
+        session_id: Uuid,
+        user_id: Uuid,
+        question_id: &str,
+        answer: &str,
+        now: DateTime<Utc>,
+    ) -> Result<SubmitAttemptPayload> {
+        self.submit_attempt(session_id, user_id, question_id, answer, now)
+    }
+
+    async fn leaderboard(&self, period: Period, page: i32, size: i32) -> Result<LeaderboardPage> {
+        Ok(self.leaderboard(period, page, size))
+    }
+
+    async fn my_rank(&self, period: Period, user_id: Uuid) -> Result<RankSummary> {
+        Ok(self.my_rank(period, user_id))
+    }
+
+    async fn configs(&self, namespace: &str) -> Result<Vec<ConfigEntry>> {
+        Ok(self.configs(namespace))
+    }
+
+    async fn config_schemas(&self, namespace: Option<&str>) -> Result<Vec<ConfigSchemaEntry>> {
+        Ok(self.config_schemas(namespace))
+    }
+
+    async fn upsert_config(
+        &self,
+        namespace: &str,
+        key: &str,
+        value: &str,
+        changed_by: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<ConfigMutationPayload> {
+        Ok(self.upsert_config(namespace, key, value, changed_by, now))
+    }
+
+    async fn delete_config(
+        &self,
+        namespace: &str,
+        key: &str,
+        changed_by: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<ConfigMutationPayload> {
+        Ok(self.delete_config(namespace, key, changed_by, now))
+    }
+
+    async fn rollback_config(
+        &self,
+        namespace: &str,
+        key: &str,
+        version: i32,
+        changed_by: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<ConfigMutationPayload> {
+        self.rollback_config(namespace, key, version, changed_by, now)
+    }
+
+    async fn config_history(
+        &self,
+        namespace: &str,
+        key: &str,
+        limit: i32,
+    ) -> Result<Vec<ConfigAuditEntry>> {
+        Ok(self.config_history(namespace, key, limit))
+    }
+
+    async fn register_schema(&self, schema: ConfigSchemaEntry) -> Result<ConfigSchemaEntry> {
+        self.register_schema(schema)
+    }
+
+    async fn upload_question(
+        &self,
+        chapter_id: &str,
+        difficulty: i32,
+        content: QuestionContent,
+        correct_option_id: String,
+        now: DateTime<Utc>,
+    ) -> Result<QuestionVersion> {
+        self.upload_question(chapter_id, difficulty, content, correct_option_id, now)
+    }
+
+    async fn update_question(
+        &self,
+        question_id: &str,
+        chapter_id: &str,
+        difficulty: i32,
+        content: QuestionContent,
+        correct_option_id: String,
+        now: DateTime<Utc>,
+    ) -> Result<QuestionVersion> {
+        self.update_question(
+            question_id,
+            chapter_id,
+            difficulty,
+            content,
+            correct_option_id,
+            now,
+        )
+    }
+
+    async fn soft_delete_question(&self, question_id: &str, now: DateTime<Utc>) -> Result<bool> {
+        self.soft_delete_question(question_id, now)
+    }
+
+    async fn question_versions(&self, question_id: &str) -> Result<Vec<QuestionVersion>> {
+        Ok(self.question_versions(question_id))
+    }
+
+    async fn config_snapshot(&self) -> Result<serde_json::Value> {
+        Ok(self.config_snapshot())
     }
 }
