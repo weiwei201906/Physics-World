@@ -10,6 +10,9 @@
 #   GATEWAY_PORT        port the gateway listens on
 #   AUTH_UPSTREAM       host:port of auth-service
 #   USER_API_UPSTREAM   host:port of user-api
+#   SSE_UPSTREAM        host:port of user-api-sse
+#   REC_UPSTREAM        host:port of recommendation-service
+#   BATTLE_UPSTREAM     host:port of battle-service
 #   GATEWAY_STATIC_DIR  directory containing the built frontend
 
 server {
@@ -133,11 +136,69 @@ server {
         proxy_set_header X-User-Email $identity_user_email;
     }
 
-    # Battle WebSocket service is not deployed yet; fail fast instead of
-    # silently falling through to the SPA.
+    # Server-sent events. Identity is enforced by auth-service first; the
+    # stream itself must never be buffered by the gateway.
+    location = /events {
+        auth_request /_auth;
+        auth_request_set $identity_user_id $upstream_http_x_user_id;
+        auth_request_set $identity_user_roles $upstream_http_x_user_roles;
+        auth_request_set $identity_user_email $upstream_http_x_user_email;
+
+        proxy_pass http://${SSE_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection '';
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-User-Id $identity_user_id;
+        proxy_set_header X-User-Roles $identity_user_roles;
+        proxy_set_header X-User-Email $identity_user_email;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+    }
+
+    # Recommendation GraphQL. Same optional-auth contract as user-api.
+    location /rec/ {
+        auth_request /_auth;
+        auth_request_set $identity_user_id $upstream_http_x_user_id;
+        auth_request_set $identity_user_roles $upstream_http_x_user_roles;
+        auth_request_set $identity_user_email $upstream_http_x_user_email;
+
+        proxy_pass http://${REC_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-User-Id $identity_user_id;
+        proxy_set_header X-User-Roles $identity_user_roles;
+        proxy_set_header X-User-Email $identity_user_email;
+        proxy_read_timeout 60s;
+    }
+
+    # Battle WebSocket. The browser cannot attach an Authorization header to
+    # a WebSocket handshake, so the service performs token validation on the
+    # first frame instead of relying on auth_request here.
+    location = /ws/battle {
+        proxy_pass http://${BATTLE_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # Unknown WebSocket endpoints fail fast instead of silently falling
+    # through to the SPA.
     location /ws/ {
         default_type application/json;
-        return 503 '{"code":"unavailable","message":"battle service is not deployed"}';
+        return 503 '{"code":"unavailable","message":"unknown websocket endpoint"}';
     }
 
     # Static assets first, then the SPA entry point.

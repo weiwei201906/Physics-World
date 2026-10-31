@@ -11,6 +11,9 @@ FROM nginx:1.27-alpine
 ENV GATEWAY_PORT=8080 \
     AUTH_UPSTREAM=auth-service:8081 \
     USER_API_UPSTREAM=user-api:8082 \
+    SSE_UPSTREAM=user-api-sse:8085 \
+    REC_UPSTREAM=recommendation-service:8086 \
+    BATTLE_UPSTREAM=battle-service:8087 \
     GATEWAY_STATIC_DIR=/usr/share/nginx/html
 COPY deploy/gateway/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=frontend /app/dist /usr/share/nginx/html

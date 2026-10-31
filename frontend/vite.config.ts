@@ -18,6 +18,8 @@ export default defineConfig({
       '/graphql': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/graphiql': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/config': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/events': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/rec': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/ws': { target: 'ws://127.0.0.1:8080', ws: true }
     }
   },
