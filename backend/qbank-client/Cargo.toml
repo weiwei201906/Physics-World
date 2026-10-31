@@ -1,0 +1,18 @@
+[package]
+name = "qbank-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+async-trait = "0.1"
+common.workspace = true
+prost = "0.13"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tonic = { version = "0.12", features = ["transport"] }
+tracing.workspace = true
+
+[build-dependencies]
+tonic-build = "0.12"
