@@ -2,7 +2,7 @@
 
 面向学校的物理答题游戏：单人练习、章节刷题、实时对战、个性化推荐与排行榜。
 
-技术栈固定为 Vue 3 + TypeScript（前端）、Rust（业务服务）、C++20 + 腾讯 Flare + Blade（题库服务），部署目标为 TKE。完整架构说明见 [docs/architecture.md](docs/architecture.md)。
+技术栈固定为 Vue 3 + TypeScript（前端）与 Rust（业务服务），部署目标为 TKE。题库服务尚未实现，当前仅保留 `contracts/proto` 契约与 Rust 客户端 `qbank-client`。完整架构说明见 [docs/architecture.md](docs/architecture.md)。
 
 ## 目录结构
 
@@ -20,8 +20,7 @@ Physics-World/
 │   ├── attempt-consumer/     # Kafka consumer
 │   ├── battle-result-consumer/
 │   ├── profile-bootstrap-consumer/
-│   ├── qbank-client/         # Rust gRPC 客户端
-│   ├── question-bank/        # C++20 + Tencent Flare + Blade
+│   ├── qbank-client/         # Rust gRPC 客户端（题库服务契约）
 │   └── migrations/           # PostgreSQL schema / migration
 ├── contracts/
 │   ├── graphql/              # user-api 与 recommendation SDL
@@ -41,7 +40,6 @@ Physics-World/
 ```bash
 git worktree add .worktrees/frontend       -b feat/frontend-brand-i18n       develop
 git worktree add .worktrees/backend-core   -b feat/backend-core-services     develop
-git worktree add .worktrees/question-bank  -b feat/backend-question-bank     develop
 ```
 
 每个智能体只在自己 worktree 内提交；合并前必须由独立 review 智能体审查。
@@ -57,7 +55,7 @@ cd backend && cargo clippy --workspace --all-targets -- -D warnings
 cd backend && cargo test --workspace
 ```
 
-题库服务当前为离线骨架（Flare/Blade 依赖尚未 vendoring 进仓库），本地构建状态标记 `UNVERIFIED`。
+题库服务尚未实现；`contracts/proto/qbank.proto` 与 `backend/qbank-client` 保留稳定的 gRPC 契约，便于后续接入。
 
 网关与前后端联调（推荐方式，一条命令拉起数据库、5 个服务、网关与前端）：
 

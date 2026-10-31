@@ -13,7 +13,7 @@
 
 `scope` 取值：`frontend`、`auth`、`user-api`、`sse`、`recommendation`、`battle`、`consumer`、`qbank`、`shared`、`contracts`、`gateway`、`repo`、`deploy`。
 
-分支命名示例：`feat/frontend-brand-i18n`、`feat/backend-core-services`、`feat/backend-question-bank`。
+分支命名示例：`feat/frontend-brand-i18n`、`feat/backend-core-services`、`chore/ci-pipeline`。
 
 ## 2. 多智能体并行
 
@@ -40,7 +40,7 @@
 test(frontend): cover single-flight refresh queue
 feat(frontend): add quiz timer and answer feedback
 feat(backend-rust): scaffold auth service with refresh rotation
-build(backend-cpp): add blade targets for qbank cache layer
+ci(backend): add cargo fmt and clippy pipeline
 ```
 
 禁止事项：

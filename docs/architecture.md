@@ -101,7 +101,8 @@
 
 **实现状态**：鉴权、用户、推荐、对战、网关与三个 Consumer 已有可运行代码；`gateway` 当前为
 Nginx 模板（未使用 OpenResty Lua，限流与 JWT 黑名单检查仍在计划中）；`battle-service` 的 JWT
-验签与 Redis 撤销订阅仍为 TODO；`question-bank` 为离线 C++ 骨架，Flare/Blade 依赖尚未 vendoring。
+验签与 Redis 撤销订阅仍为 TODO；`question-bank` 尚未实现，仓库内仅保留 `contracts/proto/qbank.proto`
+与 Rust 客户端 `qbank-client`。
 
 **拆分理由**：`user-api-sse` 独立（SSE 长连接、HPA 信号不同）；三个 Consumer 独立（topic 分区数不同，单进程无法独立扩缩）；`recommendation-service` 独立（flusher 后台批量任务与 GraphQL 请求争 PG）；`battle-service` 独立（WS 长连接、有状态、伸缩信号是连接数）。
 
