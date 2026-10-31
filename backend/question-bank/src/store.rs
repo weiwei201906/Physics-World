@@ -197,6 +197,33 @@ impl QuestionStore {
         Ok(rows.into_iter().map(into_question).collect())
     }
 
+    pub async fn search(
+        &self,
+        query: &str,
+        chapter_id: &str,
+        difficulty: i32,
+        limit: i32,
+    ) -> Result<Vec<Question>> {
+        let limit = clamp_limit(limit, 20);
+        let rows = sqlx::query_as::<_, QuestionRow>(
+            "SELECT id, chapter_id, difficulty, stem, image_url, explanation, options, \
+             media, updated_at FROM question.questions \
+             WHERE deleted_at IS NULL \
+               AND ($1 = '' OR stem ILIKE '%' || $1 || '%') \
+               AND ($2 = '' OR chapter_id = $2) \
+               AND ($3::integer <= 0 OR difficulty = $3) \
+             ORDER BY updated_at DESC, id LIMIT $4",
+        )
+        .bind(query)
+        .bind(chapter_id)
+        .bind(difficulty)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| AppError::internal(format!("search questions: {error}")))?;
+        Ok(rows.into_iter().map(into_question).collect())
+    }
+
     pub async fn meta(&self, question_ids: &[String]) -> Result<Vec<QuestionMeta>> {
         let rows = sqlx::query_as::<_, QuestionRow>(
             "SELECT id, chapter_id, difficulty, stem, image_url, explanation, options, \

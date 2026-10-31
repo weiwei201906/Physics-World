@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::settings::Settings;
+use crate::vector::PlayerVector;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -24,6 +25,16 @@ pub enum RoomPhase {
 }
 
 impl RoomPhase {
+    pub fn as_status(self) -> &'static str {
+        match self {
+            RoomPhase::Waiting => "waiting",
+            RoomPhase::Matching => "matching",
+            RoomPhase::Playing => "playing",
+            RoomPhase::Settling => "settling",
+            RoomPhase::Finished => "finished",
+        }
+    }
+
     pub fn can_transition_to(self, next: RoomPhase) -> bool {
         matches!(
             (self, next),
@@ -36,15 +47,61 @@ impl RoomPhase {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BattleOption {
+    pub id: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuestionSpec {
     pub id: String,
     pub correct_option: String,
+    pub stem: String,
+    pub options: Vec<BattleOption>,
+    pub explanation: String,
+}
+
+impl QuestionSpec {
+    pub fn new(
+        id: impl Into<String>,
+        correct_option: impl Into<String>,
+        stem: impl Into<String>,
+        options: Vec<BattleOption>,
+        explanation: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            correct_option: correct_option.into(),
+            stem: stem.into(),
+            options,
+            explanation: explanation.into(),
+        }
+    }
+
+    pub fn demo(id: impl Into<String>, correct_option: &str) -> Self {
+        let id = id.into();
+        let options = ["a", "b", "c", "d"]
+            .iter()
+            .map(|label| BattleOption {
+                id: (*label).to_string(),
+                text: format!("Option {label}"),
+            })
+            .collect();
+        Self::new(
+            &id,
+            correct_option,
+            format!("Demo question {id}"),
+            options,
+            String::new(),
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerSnapshot {
     pub player_id: Uuid,
+    pub nickname: String,
     pub score: i32,
     pub correct_answers: u32,
     pub answered_questions: u32,
@@ -58,6 +115,7 @@ pub struct RoomView {
     pub phase: RoomPhase,
     pub players: Vec<PlayerSnapshot>,
     pub current_index: usize,
+    pub total_questions: usize,
     pub question_id: Option<String>,
     pub question_deadline: Option<DateTime<Utc>>,
 }
@@ -65,9 +123,13 @@ pub struct RoomView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuestionView {
-    pub question_index: usize,
-    pub question_id: String,
-    pub deadline: DateTime<Utc>,
+    pub index: usize,
+    pub total: usize,
+    pub seconds: i64,
+    pub id: String,
+    pub stem: String,
+    pub options: Vec<BattleOption>,
+    pub explanation: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,6 +137,7 @@ pub struct QuestionView {
 pub struct PlayerResult {
     pub rank: usize,
     pub player_id: Uuid,
+    pub nickname: String,
     pub score: i32,
     pub correct_answers: u32,
     pub answered_questions: u32,
@@ -114,7 +177,6 @@ pub enum EngineEvent {
     Matched {
         room_id: Uuid,
         room: RoomView,
-        question: QuestionView,
     },
     Question {
         room_id: Uuid,
@@ -125,9 +187,12 @@ pub enum EngineEvent {
         player_id: Uuid,
         question_index: usize,
         correct: bool,
+        correct_option_id: String,
+        explanation: String,
         points: i32,
         speed_bonus: i32,
         total_score: i32,
+        room: RoomView,
     },
     Finished {
         room_id: Uuid,
@@ -144,15 +209,17 @@ pub enum EngineEvent {
 
 #[derive(Debug, Clone)]
 struct PlayerState {
+    nickname: String,
     score: i32,
     correct_answers: u32,
     answered_questions: u32,
     connected: bool,
 }
 
-impl Default for PlayerState {
-    fn default() -> Self {
+impl PlayerState {
+    fn new(nickname: String) -> Self {
         Self {
+            nickname,
             score: 0,
             correct_answers: 0,
             answered_questions: 0,
@@ -185,9 +252,9 @@ struct Room {
 }
 
 impl Room {
-    fn new(id: Uuid, player: Uuid, created_at: DateTime<Utc>) -> Self {
+    fn new(id: Uuid, player: Uuid, nickname: String, created_at: DateTime<Utc>) -> Self {
         let mut players = BTreeMap::new();
-        players.insert(player, PlayerState::default());
+        players.insert(player, PlayerState::new(nickname));
         Self {
             id,
             phase: RoomPhase::Waiting,
@@ -224,6 +291,7 @@ impl Room {
                 .iter()
                 .map(|(player_id, state)| PlayerSnapshot {
                     player_id: *player_id,
+                    nickname: state.nickname.clone(),
                     score: state.score,
                     correct_answers: state.correct_answers,
                     answered_questions: state.answered_questions,
@@ -231,6 +299,7 @@ impl Room {
                 })
                 .collect(),
             current_index: self.current_index,
+            total_questions: self.questions.len(),
             question_id: self
                 .questions
                 .get(self.current_index)
@@ -243,13 +312,17 @@ impl Room {
         self.questions.get(self.current_index)
     }
 
-    fn current_question_view(&self) -> Option<QuestionView> {
+    fn current_question_view(&self, now: DateTime<Utc>) -> Option<QuestionView> {
         let question = self.current_question()?;
         let deadline = self.question_deadline?;
         Some(QuestionView {
-            question_index: self.current_index,
-            question_id: question.id.clone(),
-            deadline,
+            index: self.current_index,
+            total: self.questions.len(),
+            seconds: (deadline - now).num_seconds().max(0),
+            id: question.id.clone(),
+            stem: question.stem.clone(),
+            options: question.options.clone(),
+            explanation: question.explanation.clone(),
         })
     }
 
@@ -273,6 +346,7 @@ impl Room {
             .map(|(player_id, state)| PlayerResult {
                 rank: 0,
                 player_id: *player_id,
+                nickname: state.nickname.clone(),
                 score: state.score,
                 correct_answers: state.correct_answers,
                 answered_questions: state.answered_questions,
@@ -309,6 +383,7 @@ pub struct BattleEngine {
     rooms: HashMap<Uuid, Room>,
     queue: VecDeque<Uuid>,
     player_room: HashMap<Uuid, Uuid>,
+    player_vectors: HashMap<Uuid, PlayerVector>,
 }
 
 impl BattleEngine {
@@ -320,10 +395,34 @@ impl BattleEngine {
             rooms: HashMap::new(),
             queue: VecDeque::new(),
             player_room: HashMap::new(),
+            player_vectors: HashMap::new(),
         }
     }
 
     pub fn enqueue(&mut self, player: Uuid) -> Result<(EnqueueOutcome, Vec<EngineEvent>)> {
+        self.enqueue_with_profile(player, None, PlayerVector::default())
+    }
+
+    pub fn enqueue_with_vector(
+        &mut self,
+        player: Uuid,
+        vector: PlayerVector,
+    ) -> Result<(EnqueueOutcome, Vec<EngineEvent>)> {
+        self.enqueue_with_profile(player, None, vector)
+    }
+
+    /// Queues `player` and pairs it with the waiting opponent whose error
+    /// vector is most cosine-similar. Zero vectors fall back to FIFO order.
+    pub fn enqueue_with_profile(
+        &mut self,
+        player: Uuid,
+        nickname: Option<String>,
+        vector: PlayerVector,
+    ) -> Result<(EnqueueOutcome, Vec<EngineEvent>)> {
+        let nickname = nickname
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "Player".to_string());
         let now = self.clock.now();
         let mut events = self.expire_waiting(now);
 
@@ -339,13 +438,15 @@ impl BattleEngine {
             self.player_room.remove(&player);
         }
 
-        if let Some(room_id) = self.pop_waiting_room() {
+        self.player_vectors.insert(player, vector.clone());
+
+        if let Some(room_id) = self.select_waiting_room(&vector) {
             let questions = self.build_questions()?;
             let room = self
                 .rooms
                 .get_mut(&room_id)
                 .ok_or_else(|| AppError::internal("waiting room disappeared"))?;
-            room.players.insert(player, PlayerState::default());
+            room.players.insert(player, PlayerState::new(nickname));
             room.transition_to(RoomPhase::Matching)?;
             room.questions = questions;
             room.current_index = 0;
@@ -358,12 +459,11 @@ impl BattleEngine {
 
             let view = room.view();
             let question = room
-                .current_question_view()
+                .current_question_view(now)
                 .ok_or_else(|| AppError::internal("room has no first question"))?;
             events.push(EngineEvent::Matched {
                 room_id,
                 room: view.clone(),
-                question: question.clone(),
             });
             events.push(EngineEvent::Question { room_id, question });
             return Ok((
@@ -376,11 +476,37 @@ impl BattleEngine {
         }
 
         let room_id = Uuid::new_v4();
-        let room = Room::new(room_id, player, now);
+        let room = Room::new(room_id, player, nickname, now);
         self.rooms.insert(room_id, room);
         self.queue.push_back(room_id);
         self.player_room.insert(player, room_id);
         Ok((EnqueueOutcome::Waiting { room_id }, events))
+    }
+
+    /// Re-attaches a player that already owns a seat in `room_id`.
+    pub fn join(
+        &mut self,
+        player: Uuid,
+        room_id: Uuid,
+    ) -> Result<(RoomView, Option<QuestionView>)> {
+        let now = self.clock.now();
+        let room = self
+            .rooms
+            .get_mut(&room_id)
+            .ok_or_else(|| AppError::not_found("room not found"))?;
+        let state = room
+            .players
+            .get_mut(&player)
+            .ok_or_else(|| AppError::forbidden("player is not a room member"))?;
+        state.connected = true;
+        self.player_room.insert(player, room_id);
+        let view = room.view();
+        let question = if room.phase == RoomPhase::Playing {
+            room.current_question_view(now)
+        } else {
+            None
+        };
+        Ok((view, question))
     }
 
     pub fn answer(
@@ -430,7 +556,7 @@ impl BattleEngine {
 
         let now = self.clock.now();
         let speed_bonus_max = self.settings.speed_bonus_max;
-        let (correct, points, speed_bonus, total_score) = {
+        let (correct, correct_option_id, explanation, points, speed_bonus, total_score) = {
             let room = self
                 .rooms
                 .get_mut(&room_id)
@@ -486,17 +612,32 @@ impl BattleEngine {
                     speed_bonus,
                 },
             );
-            (correct, points, speed_bonus, total_score)
+            (
+                correct,
+                question.correct_option.clone(),
+                question.explanation.clone(),
+                points,
+                speed_bonus,
+                total_score,
+            )
         };
 
+        let room_view = self
+            .rooms
+            .get(&room_id)
+            .map(Room::view)
+            .ok_or_else(|| AppError::internal("room disappeared"))?;
         let mut events = vec![EngineEvent::Score {
             room_id,
             player_id: player,
             question_index,
             correct,
+            correct_option_id,
+            explanation,
             points,
             speed_bonus,
             total_score,
+            room: room_view,
         }];
         let all_answered = self
             .rooms
@@ -542,18 +683,30 @@ impl BattleEngine {
             self.rooms.remove(&room_id);
             self.queue.retain(|queued| *queued != room_id);
             self.player_room.remove(&player);
+            self.player_vectors.remove(&player);
             return Ok(vec![EngineEvent::RoomExpired { room_id }]);
         }
 
         if phase == RoomPhase::Playing {
-            if let Some(room) = self.rooms.get_mut(&room_id) {
+            // A browser tab navigating between the lobby and the room tears
+            // down the old socket right before the new one re-joins, so a
+            // disconnect only marks presence; settle once everyone is gone.
+            let all_disconnected = {
+                let room = self
+                    .rooms
+                    .get_mut(&room_id)
+                    .ok_or_else(|| AppError::not_found("room not found"))?;
                 if let Some(state) = room.players.get_mut(&player) {
                     state.connected = false;
                 }
+                room.players.values().all(|state| !state.connected)
+            };
+            if all_disconnected {
+                if let Some(result) = self.settle_room(room_id, now) {
+                    return Ok(vec![EngineEvent::Finished { room_id, result }]);
+                }
             }
-            if let Some(result) = self.settle_room(room_id, now) {
-                return Ok(vec![EngineEvent::Finished { room_id, result }]);
-            }
+            return Ok(Vec::new());
         }
 
         self.player_room.remove(&player);
@@ -598,18 +751,46 @@ impl BattleEngine {
         self.rooms.get(&room_id).map(Room::view)
     }
 
-    fn pop_waiting_room(&mut self) -> Option<Uuid> {
-        while let Some(room_id) = self.queue.pop_front() {
+    /// Picks the waiting room whose occupant is most cosine-similar to the
+    /// incoming player. Ties and zero-similarity fall back to queue order.
+    fn select_waiting_room(&mut self, incoming: &PlayerVector) -> Option<Uuid> {
+        let mut best: Option<(Uuid, f64)> = None;
+        let mut fallback: Option<Uuid> = None;
+        let mut stale: Vec<Uuid> = Vec::new();
+
+        for room_id in self.queue.iter().copied() {
             let valid = self
                 .rooms
                 .get(&room_id)
                 .map(|room| room.phase == RoomPhase::Waiting && room.players.len() == 1)
                 .unwrap_or(false);
-            if valid {
-                return Some(room_id);
+            if !valid {
+                stale.push(room_id);
+                continue;
+            }
+            if fallback.is_none() {
+                fallback = Some(room_id);
+            }
+            let similarity = self
+                .rooms
+                .get(&room_id)
+                .and_then(|room| room.players.keys().next().copied())
+                .and_then(|player| self.player_vectors.get(&player))
+                .map(|vector| incoming.cosine(vector))
+                .unwrap_or(0.0);
+            match best {
+                Some((_, score)) if score >= similarity => {}
+                _ => best = Some((room_id, similarity)),
             }
         }
-        None
+
+        let chosen = match best {
+            Some((room_id, score)) if score > 0.0 => room_id,
+            _ => fallback?,
+        };
+        stale.push(chosen);
+        self.queue.retain(|queued| !stale.contains(queued));
+        Some(chosen)
     }
 
     fn build_questions(&self) -> Result<Vec<QuestionSpec>> {
@@ -652,7 +833,7 @@ impl BattleEngine {
                 room.question_started_at = Some(now);
                 let deadline = now + self.settings.per_question_duration();
                 room.question_deadline = Some(deadline);
-                if let Some(question) = room.current_question_view() {
+                if let Some(question) = room.current_question_view(now) {
                     events.push(EngineEvent::Question { room_id, question });
                 }
                 false
@@ -685,6 +866,7 @@ impl BattleEngine {
             if self.player_room.get(&player) == Some(&room_id) {
                 self.player_room.remove(&player);
             }
+            self.player_vectors.remove(&player);
         }
         Some(result)
     }
@@ -711,6 +893,7 @@ impl BattleEngine {
             self.rooms.remove(&room_id);
             self.queue.retain(|queued| *queued != room_id);
             self.player_room.remove(&player_id);
+            self.player_vectors.remove(&player_id);
             events.push(EngineEvent::QueueTimeout { room_id, player_id });
             events.push(EngineEvent::RoomExpired { room_id });
         }
@@ -746,10 +929,7 @@ mod tests {
         ["a", "b", "c", "d", "a", "b"]
             .iter()
             .enumerate()
-            .map(|(index, option)| QuestionSpec {
-                id: format!("q-{}", index + 1),
-                correct_option: (*option).to_string(),
-            })
+            .map(|(index, option)| QuestionSpec::demo(format!("q-{}", index + 1), option))
             .collect()
     }
 
@@ -803,6 +983,63 @@ mod tests {
         assert_eq!(view.players.len(), 2);
         assert_eq!(view.question_id.as_deref(), Some("q-1"));
         assert!(view.question_deadline.is_some());
+    }
+
+    #[test]
+    fn matchmaking_prefers_the_closest_error_vector() {
+        let (clock, mut engine) = engine();
+        let mechanics =
+            PlayerVector::new(vec!["mechanics:1".to_owned()], vec![1.0]).expect("mechanics vector");
+        let optics =
+            PlayerVector::new(vec!["optics:1".to_owned()], vec![1.0]).expect("optics vector");
+        let now = clock.now();
+
+        // Seed two waiting rooms directly: in normal operation every enqueue
+        // matches the first waiter, so similarity only matters when several
+        // players wait at once.
+        let waiting_optics = Uuid::new_v4();
+        let waiting_mechanics = Uuid::new_v4();
+        let optics_player = Uuid::new_v4();
+        let mechanics_player = Uuid::new_v4();
+        engine.rooms.insert(
+            waiting_optics,
+            Room::new(waiting_optics, optics_player, "Optics".to_string(), now),
+        );
+        engine.rooms.insert(
+            waiting_mechanics,
+            Room::new(
+                waiting_mechanics,
+                mechanics_player,
+                "Mechanics".to_string(),
+                now,
+            ),
+        );
+        engine.queue.push_back(waiting_optics);
+        engine.queue.push_back(waiting_mechanics);
+        engine.player_room.insert(optics_player, waiting_optics);
+        engine
+            .player_room
+            .insert(mechanics_player, waiting_mechanics);
+        engine.player_vectors.insert(optics_player, optics);
+        engine
+            .player_vectors
+            .insert(mechanics_player, mechanics.clone());
+
+        let incoming = Uuid::new_v4();
+        let (outcome, _) = engine
+            .enqueue_with_vector(incoming, mechanics)
+            .expect("enqueue");
+        match outcome {
+            EnqueueOutcome::Matched { room_id, room } => {
+                assert_eq!(room_id, waiting_mechanics);
+                assert_eq!(room.players.len(), 2);
+            }
+            EnqueueOutcome::Waiting { .. } => panic!("expected a match"),
+        }
+        assert_eq!(
+            engine.view(waiting_optics).map(|room| room.phase),
+            Some(RoomPhase::Waiting)
+        );
     }
 
     #[test]
@@ -885,7 +1122,7 @@ mod tests {
         clock.advance(Duration::seconds(11));
         let events = engine.tick();
         assert!(events.iter().any(
-            |event| matches!(event, EngineEvent::Question { question, .. } if question.question_index == 1)
+            |event| matches!(event, EngineEvent::Question { question, .. } if question.index == 1)
         ));
         let view = engine.view(room_id).expect("room view");
         assert_eq!(view.current_index, 1);
@@ -940,14 +1177,38 @@ mod tests {
     }
 
     #[test]
-    fn leaving_playing_room_settles_it() {
+    fn disconnecting_both_players_settles_the_room() {
         let (_clock, mut engine) = engine();
         let first = Uuid::new_v4();
         let second = Uuid::new_v4();
         let room_id = matched_room(&mut engine, first, second);
         let events = engine.leave(first).expect("leave");
+        assert!(events.is_empty());
+        assert_eq!(
+            engine.view(room_id).map(|room| room.phase),
+            Some(RoomPhase::Playing)
+        );
+        let events = engine.leave(second).expect("leave");
         assert!(matches!(events[0], EngineEvent::Finished { .. }));
         let view = engine.view(room_id).expect("room view");
         assert_eq!(view.phase, RoomPhase::Finished);
+    }
+
+    #[test]
+    fn join_restores_connection_state() {
+        let (_clock, mut engine) = engine();
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        let room_id = matched_room(&mut engine, first, second);
+        engine.leave(first).expect("leave");
+        let (view, question) = engine.join(first, room_id).expect("rejoin");
+        assert_eq!(view.phase, RoomPhase::Playing);
+        assert!(view
+            .players
+            .iter()
+            .find(|player| player.player_id == first)
+            .map(|player| player.connected)
+            .unwrap_or(false));
+        assert!(question.is_some());
     }
 }

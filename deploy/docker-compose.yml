@@ -117,6 +117,7 @@ services:
         SERVICE: battle-service
     environment:
       BATTLE_BIND_ADDR: 0.0.0.0:8087
+      AUTH_BASE_URL: http://auth-service:8081
       RUST_LOG: info
       REDIS_URL: redis://redis:6379/0
     expose:

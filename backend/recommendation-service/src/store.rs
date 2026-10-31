@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use common::clock::Clock;
 use common::error::{AppError, Result};
+use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::model::{AttemptStats, ChapterVector};
@@ -190,6 +191,107 @@ impl ProfileSource for InMemoryProfileSource {
             .or_insert(0) += 1;
         entry.updated_at = Some(Utc::now());
         Ok(())
+    }
+}
+
+/// PostgreSQL-backed read-only source. Stats come from `app.attempts` and the
+/// baseline vector comes from `app.user_vectors`, so a restart never loses the
+/// numbers the UI shows.
+pub struct PgProfileSource {
+    pool: PgPool,
+    dims: Vec<String>,
+}
+
+impl PgProfileSource {
+    pub async fn connect(database_url: &str, dims: Vec<String>) -> Result<Self> {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(5)
+            .connect(database_url)
+            .await
+            .map_err(|error| AppError::internal(format!("connect profile store: {error}")))?;
+        Ok(Self { pool, dims })
+    }
+}
+
+/// Collapses `chapter_id:difficulty` dimensions onto the configured chapter set.
+fn chapter_vector(config_dims: &[String], dims: &[String], weights: &[f64]) -> ChapterVector {
+    let mut vector = ChapterVector::zero(config_dims.to_vec());
+    for (dim, weight) in dims.iter().zip(weights.iter()) {
+        let chapter = dim
+            .split_once(':')
+            .map(|(chapter, _)| chapter)
+            .unwrap_or(dim);
+        vector.add(chapter, *weight);
+    }
+    vector
+}
+
+#[async_trait]
+impl ProfileSource for PgProfileSource {
+    async fn load_baseline(&self, user_id: Uuid) -> Result<ChapterVector> {
+        match sqlx::query_as::<_, (Vec<String>, Vec<f64>)>(
+            "SELECT dims, weights FROM app.user_vectors WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        {
+            Ok(Some((dims, weights))) => Ok(chapter_vector(&self.dims, &dims, &weights)),
+            Ok(None) => Ok(ChapterVector::zero(self.dims.clone())),
+            Err(error) => {
+                tracing::warn!(%error, user_id = %user_id, "load user vector failed");
+                Ok(ChapterVector::zero(self.dims.clone()))
+            }
+        }
+    }
+
+    async fn load_increments(&self, _user_id: Uuid) -> Result<ChapterVector> {
+        Ok(ChapterVector::zero(self.dims.clone()))
+    }
+
+    async fn drain_increments(&self, _user_id: Uuid) -> Result<ChapterVector> {
+        Ok(ChapterVector::zero(self.dims.clone()))
+    }
+
+    async fn updated_at(&self, user_id: Uuid) -> Result<Option<DateTime<Utc>>> {
+        let row: Option<(DateTime<Utc>,)> =
+            sqlx::query_as("SELECT updated_at FROM app.user_vectors WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|error| AppError::internal(format!("load vector timestamp: {error}")))?;
+        Ok(row.map(|(updated_at,)| updated_at))
+    }
+
+    async fn attempt_stats(&self, user_id: Uuid) -> Result<AttemptStats> {
+        let counts: (i64, i64) = sqlx::query_as(
+            "SELECT count(*) AS total, \
+                    count(*) FILTER (WHERE is_correct) AS correct \
+             FROM app.attempts WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| AppError::internal(format!("load attempt stats: {error}")))?;
+        let chapters: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT q.chapter_id, count(*) \
+             FROM app.attempts a \
+             JOIN question.questions q ON q.id = a.question_id \
+             WHERE a.user_id = $1 \
+             GROUP BY q.chapter_id",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| AppError::internal(format!("load chapter attempts: {error}")))?;
+        Ok(AttemptStats {
+            total_attempts: u64::try_from(counts.0).unwrap_or(0),
+            correct_attempts: u64::try_from(counts.1).unwrap_or(0),
+            chapter_attempts: chapters
+                .into_iter()
+                .map(|(chapter_id, count)| (chapter_id, u64::try_from(count).unwrap_or(0)))
+                .collect(),
+        })
     }
 }
 

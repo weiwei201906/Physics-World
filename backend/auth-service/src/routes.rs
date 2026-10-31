@@ -205,10 +205,10 @@ async fn login(
 async fn refresh(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<RefreshRequest>,
+    body: Option<Json<RefreshRequest>>,
 ) -> Result<Response> {
-    let raw = request
-        .refresh_token
+    let raw = body
+        .and_then(|Json(request)| request.refresh_token)
         .or_else(|| cookie_token(&headers, &state.settings.cookie_name))
         .ok_or_else(|| AppError::unauthenticated("missing refresh token"))?;
     let rotation = state
@@ -263,6 +263,7 @@ async fn verify(State(state): State<AppState>, headers: HeaderMap) -> Result<Res
         ("x-user-id", claims.sub),
         ("x-user-roles", claims.roles.join(",")),
         ("x-user-email", claims.email),
+        ("x-user-exp", claims.exp.to_string()),
     ];
     let mut response = StatusCode::NO_CONTENT.into_response();
     for (name, value) in values {

@@ -60,7 +60,11 @@ function findMatch(): void {
   if (matching.value) return
   matchError.value = ''
   matching.value = true
-  connect()
+  if (connected.value) {
+    send(findMatchFrame(mode.value))
+  } else {
+    connect()
+  }
 }
 
 function cancelMatch(): void {

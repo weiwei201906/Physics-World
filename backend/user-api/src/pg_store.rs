@@ -116,8 +116,14 @@ impl PgStore {
             return Ok(HashMap::new());
         }
         let rows: Vec<UserRow> = sqlx::query_as(
-            "SELECT user_id, email, nickname, avatar_url, roles, created_at \
-             FROM app.user_profiles WHERE user_id = ANY($1)",
+            "SELECT u.id, u.email, \
+                    COALESCE(NULLIF(p.nickname, ''), u.nickname) AS nickname, \
+                    COALESCE(p.avatar_url, u.avatar_url) AS avatar_url, \
+                    COALESCE(p.roles, u.roles) AS roles, \
+                    u.created_at \
+             FROM auth.users u \
+             LEFT JOIN app.user_profiles p ON p.user_id = u.id \
+             WHERE u.id = ANY($1)",
         )
         .bind(user_ids)
         .fetch_all(&self.pool)
@@ -420,17 +426,34 @@ impl DomainStore for PgStore {
                 return Err(AppError::not_found("chapter not found"));
             }
         }
-        let question_ids: Vec<String> = sqlx::query_scalar(
-            "SELECT q.id FROM question.questions q \
-             JOIN question.chapters c ON c.id = q.chapter_id \
-             WHERE q.deleted_at IS NULL AND ($2::text IS NULL OR q.chapter_id = $2) \
-             ORDER BY c.position, q.id LIMIT $1",
-        )
-        .bind(i64::from(limit.max(1)))
-        .bind(chapter_id.as_deref())
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|error| db_error("select session questions", error))?;
+        let question_ids: Vec<String> = match chapter_id.as_deref() {
+            Some(chapter) => sqlx::query_scalar(
+                "SELECT q.id FROM question.questions q \
+                 JOIN question.chapters c ON c.id = q.chapter_id \
+                 WHERE q.deleted_at IS NULL AND q.chapter_id = $2 \
+                 ORDER BY q.difficulty, q.id LIMIT $1",
+            )
+            .bind(i64::from(limit.max(1)))
+            .bind(chapter)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| db_error("select session questions", error))?,
+            // PRACTICE mode: surface the dimensions with the highest error
+            // weight first, then shuffle within the same weight.
+            None => sqlx::query_scalar(
+                "SELECT q.id FROM question.questions q \
+                 LEFT JOIN app.user_vectors uv ON uv.user_id = $2 \
+                 WHERE q.deleted_at IS NULL \
+                 ORDER BY coalesce( \
+                   uv.weights[array_position(uv.dims, q.chapter_id || ':' || q.difficulty)], 0 \
+                 ) DESC, random() LIMIT $1",
+            )
+            .bind(i64::from(limit.max(1)))
+            .bind(user_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| db_error("select practice questions", error))?,
+        };
         if question_ids.is_empty() {
             return Err(AppError::not_found("no questions available"));
         }
@@ -585,6 +608,13 @@ impl DomainStore for PgStore {
         .execute(&mut *tx)
         .await
         .map_err(|error| db_error("insert attempt", error))?;
+        // Refresh the per-user error vector in the same transaction so the
+        // next practice session and battle matchmaking see one consistent view.
+        sqlx::query("SELECT app.refresh_user_vector($1)")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("refresh user vector", error))?;
         let answered: i64 =
             sqlx::query_scalar("SELECT count(*) FROM app.attempts WHERE session_id = $1")
                 .bind(session_id)

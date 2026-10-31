@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useBattleWebSocket } from '@/composables/useBattleWebSocket'
@@ -19,10 +19,13 @@ const currentQuestion = ref<{ stem: string; options: Array<{ id: string; text: s
 const selectedAnswer = ref<string | null>(null)
 const questionIndex = ref(0)
 
-onMounted(() => {
-  connect()
-  send(joinRoomFrame(props.roomId))
+watch(connected, (isConnected) => {
+  if (isConnected) {
+    send(joinRoomFrame(props.roomId))
+  }
+})
 
+onMounted(() => {
   onMessage((data) => {
     const msg = data as Record<string, unknown>
     if (msg.type === BATTLE_FRAME.ROOM_STATE) {
@@ -38,6 +41,7 @@ onMounted(() => {
       status.value = 'finished'
     }
   })
+  connect()
 })
 
 onUnmounted(() => {

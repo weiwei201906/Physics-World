@@ -11,9 +11,10 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::engine::{
-    AnswerOutcome, BattleEngine, BattleResult, EngineEvent, EnqueueOutcome, RoomView,
+    AnswerOutcome, BattleEngine, BattleResult, EngineEvent, EnqueueOutcome, QuestionView, RoomView,
 };
-use crate::protocol::ServerMessage;
+use crate::protocol::{BattleOptionView, BattlePlayerView, BattleQuestionBody, ServerMessage};
+use crate::vector::PlayerVector;
 
 const ROOM_CHANNEL_CAPACITY: usize = 256;
 
@@ -31,7 +32,25 @@ pub enum EnqueueResult {
 
 #[async_trait]
 pub trait BattleStore: Send + Sync {
-    async fn enqueue(&self, player: Uuid) -> Result<EnqueueResult>;
+    /// Queues the player without an error vector; FIFO matchmaking.
+    async fn enqueue(&self, player: Uuid) -> Result<EnqueueResult> {
+        self.enqueue_with_profile(player, None, PlayerVector::default())
+            .await
+    }
+    async fn enqueue_with_vector(
+        &self,
+        player: Uuid,
+        vector: PlayerVector,
+    ) -> Result<EnqueueResult> {
+        self.enqueue_with_profile(player, None, vector).await
+    }
+    async fn enqueue_with_profile(
+        &self,
+        player: Uuid,
+        nickname: Option<String>,
+        vector: PlayerVector,
+    ) -> Result<EnqueueResult>;
+    async fn join(&self, player: Uuid, room_id: Uuid) -> Result<(RoomView, Option<QuestionView>)>;
     async fn answer(
         &self,
         player: Uuid,
@@ -161,10 +180,15 @@ impl InMemoryBattleStore {
 
 #[async_trait]
 impl BattleStore for InMemoryBattleStore {
-    async fn enqueue(&self, player: Uuid) -> Result<EnqueueResult> {
+    async fn enqueue_with_profile(
+        &self,
+        player: Uuid,
+        nickname: Option<String>,
+        vector: PlayerVector,
+    ) -> Result<EnqueueResult> {
         let (outcome, events) = {
             let mut engine = self.engine();
-            engine.enqueue(player)?
+            engine.enqueue_with_profile(player, nickname, vector)?
         };
         let room_id = match &outcome {
             EnqueueOutcome::Waiting { room_id } => *room_id,
@@ -180,6 +204,10 @@ impl BattleStore for InMemoryBattleStore {
                 receiver,
             },
         })
+    }
+
+    async fn join(&self, player: Uuid, room_id: Uuid) -> Result<(RoomView, Option<QuestionView>)> {
+        self.engine().join(player, room_id)
     }
 
     async fn answer(
@@ -233,44 +261,39 @@ fn convert_events(
     let mut finished = Vec::new();
     for event in events {
         match event {
-            EngineEvent::Matched {
-                room_id,
-                room,
-                question,
-            } => messages.push((
-                room_id,
-                ServerMessage::Matched {
-                    room_id,
-                    room,
-                    question,
-                },
-            )),
+            EngineEvent::Matched { room_id, .. } => {
+                messages.push((room_id, ServerMessage::MatchFound { room_id }));
+            }
             EngineEvent::Question { room_id, question } => {
-                messages.push((room_id, ServerMessage::Question { room_id, question }));
+                messages.push((room_id, question_message(&question)));
             }
             EngineEvent::Score {
                 room_id,
-                player_id,
                 question_index,
                 correct,
+                correct_option_id,
+                explanation,
                 points,
-                speed_bonus,
                 total_score,
-            } => messages.push((
-                room_id,
-                ServerMessage::Score {
+                room,
+                ..
+            } => {
+                messages.push((room_id, room_state_message(&room)));
+                messages.push((
                     room_id,
-                    player_id,
-                    question_index,
-                    correct,
-                    points,
-                    speed_bonus,
-                    total_score,
-                },
-            )),
+                    ServerMessage::AnswerResult {
+                        index: question_index,
+                        correct,
+                        correct_option_id: Some(correct_option_id),
+                        score: points,
+                        total_score,
+                        explanation: Some(explanation),
+                    },
+                ));
+            }
             EngineEvent::Finished { room_id, result } => {
                 finished.push(result.clone());
-                messages.push((room_id, ServerMessage::Finished { room_id, result }));
+                messages.push((room_id, game_over_message(&result)));
             }
             EngineEvent::QueueTimeout { room_id, .. } => messages.push((
                 room_id,
@@ -280,6 +303,67 @@ fn convert_events(
         }
     }
     (messages, expired, finished)
+}
+
+pub(crate) fn room_state_message(room: &RoomView) -> ServerMessage {
+    ServerMessage::RoomState {
+        room_id: room.room_id,
+        status: room.phase.as_status().to_string(),
+        players: room
+            .players
+            .iter()
+            .map(|player| BattlePlayerView {
+                user_id: player.player_id,
+                nickname: player.nickname.clone(),
+                score: player.score,
+                connected: player.connected,
+            })
+            .collect(),
+        current_index: room.current_index,
+        total_questions: room.total_questions,
+    }
+}
+
+pub(crate) fn question_message(question: &QuestionView) -> ServerMessage {
+    ServerMessage::Question {
+        index: question.index,
+        total: question.total,
+        seconds: Some(question.seconds),
+        question: BattleQuestionBody {
+            id: question.id.clone(),
+            stem: question.stem.clone(),
+            options: question
+                .options
+                .iter()
+                .map(|option| BattleOptionView {
+                    id: option.id.clone(),
+                    text: option.text.clone(),
+                })
+                .collect(),
+        },
+    }
+}
+
+pub(crate) fn game_over_message(result: &BattleResult) -> ServerMessage {
+    ServerMessage::GameOver {
+        winner_id: result.winner,
+        players: result
+            .players
+            .iter()
+            .map(|player| BattlePlayerView {
+                user_id: player.player_id,
+                nickname: player.nickname.clone(),
+                score: player.score,
+                connected: player.connected,
+            })
+            .collect(),
+        final_score: result
+            .players
+            .iter()
+            .map(|player| player.score)
+            .max()
+            .unwrap_or(0),
+    }
 }
 
 #[cfg(test)]
@@ -301,10 +385,7 @@ mod tests {
         ["a", "b", "c", "d", "a"]
             .iter()
             .enumerate()
-            .map(|(index, option)| QuestionSpec {
-                id: format!("q-{}", index + 1),
-                correct_option: (*option).to_string(),
-            })
+            .map(|(index, option)| QuestionSpec::demo(format!("q-{}", index + 1), option))
             .collect()
     }
 
@@ -337,9 +418,12 @@ mod tests {
         };
 
         let message = first_rx.recv().await.expect("first matched broadcast");
-        assert!(matches!(message, ServerMessage::Matched { .. }));
+        assert!(matches!(message, ServerMessage::MatchFound { .. }));
         let message = second_rx.recv().await.expect("second matched broadcast");
-        assert!(matches!(message, ServerMessage::Matched { .. }));
+        assert!(matches!(message, ServerMessage::MatchFound { .. }));
+        // Each match also pushes the first question to the room channel.
+        let question = second_rx.recv().await.expect("first question");
+        assert!(matches!(question, ServerMessage::Question { .. }));
 
         for index in 0..Settings::default().questions_per_room as usize {
             let option = catalog()[index].correct_option.clone();

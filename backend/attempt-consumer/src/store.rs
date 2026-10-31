@@ -39,6 +39,12 @@ impl AttemptSink for PgAttemptSink {
         .execute(&self.pool)
         .await
         .map_err(|error| AppError::internal(format!("insert attempt: {error}")))?;
+        // Keep the error vector current when attempts arrive through Kafka.
+        sqlx::query("SELECT app.refresh_user_vector($1)")
+            .bind(event.user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| AppError::internal(format!("refresh user vector: {error}")))?;
         Ok(())
     }
 }

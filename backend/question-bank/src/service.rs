@@ -6,7 +6,8 @@ use qbank_client::qbank::question_bank_server::QuestionBank;
 use qbank_client::qbank::{
     BatchGetQuestionsRequest, BatchGetQuestionsResponse, GetChapterQuestionsRequest,
     GetQuestionMetaRequest, GetQuestionMetaResponse, GetQuestionRequest, GetQuestionResponse,
-    GetRandomQuestionsRequest, GetRandomQuestionsResponse, Question,
+    GetRandomQuestionsRequest, GetRandomQuestionsResponse, Question, SearchQuestionsRequest,
+    SearchQuestionsResponse,
 };
 use tonic::{Request, Response, Status};
 
@@ -115,6 +116,26 @@ impl QuestionBank for QuestionBankService {
             .await
             .map_err(internal)?;
         Ok(Response::new(GetRandomQuestionsResponse {
+            questions: questions.into_iter().map(Into::into).collect(),
+        }))
+    }
+
+    async fn search_questions(
+        &self,
+        request: Request<SearchQuestionsRequest>,
+    ) -> Result<Response<SearchQuestionsResponse>, Status> {
+        let request = request.into_inner();
+        let questions = self
+            .store
+            .search(
+                request.query.trim(),
+                request.chapter_id.trim(),
+                request.difficulty,
+                request.limit,
+            )
+            .await
+            .map_err(internal)?;
+        Ok(Response::new(SearchQuestionsResponse {
             questions: questions.into_iter().map(Into::into).collect(),
         }))
     }

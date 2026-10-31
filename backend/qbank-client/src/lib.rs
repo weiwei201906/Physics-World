@@ -192,6 +192,13 @@ pub trait QuestionBank: Send + Sync {
     async fn get_chapter_questions(&self, chapter_id: &str, limit: i32) -> Result<Vec<Question>>;
     async fn get_question_meta(&self, question_ids: &[String]) -> Result<Vec<QuestionMeta>>;
     async fn get_random_questions(&self, chapter_id: &str, count: i32) -> Result<Vec<Question>>;
+    async fn search_questions(
+        &self,
+        query: &str,
+        chapter_id: &str,
+        difficulty: i32,
+        limit: i32,
+    ) -> Result<Vec<Question>>;
 }
 
 pub struct QbankClient {
@@ -286,6 +293,31 @@ impl QuestionBank for QbankClient {
             .get_random_questions(qbank::GetRandomQuestionsRequest {
                 chapter_id: chapter_id.to_owned(),
                 count,
+            })
+            .await
+            .map_err(map_status)?;
+        Ok(response
+            .into_inner()
+            .questions
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    async fn search_questions(
+        &self,
+        query: &str,
+        chapter_id: &str,
+        difficulty: i32,
+        limit: i32,
+    ) -> Result<Vec<Question>> {
+        let mut client = self.inner.clone();
+        let response = client
+            .search_questions(qbank::SearchQuestionsRequest {
+                query: query.to_owned(),
+                chapter_id: chapter_id.to_owned(),
+                difficulty,
+                limit,
             })
             .await
             .map_err(map_status)?;
@@ -433,6 +465,35 @@ impl QuestionBank for InMemoryQuestionBank {
         questions.truncate(count as usize);
         Ok(questions)
     }
+
+    async fn search_questions(
+        &self,
+        query: &str,
+        chapter_id: &str,
+        difficulty: i32,
+        limit: i32,
+    ) -> Result<Vec<Question>> {
+        let needle = query.trim().to_ascii_lowercase();
+        let mut questions: Vec<Question> = self
+            .questions
+            .iter()
+            .filter(|question| chapter_id.is_empty() || question.chapter_id == chapter_id)
+            .filter(|question| difficulty <= 0 || question.difficulty == difficulty)
+            .filter(|question| {
+                needle.is_empty()
+                    || question
+                        .content
+                        .as_ref()
+                        .map(|content| content.stem.to_ascii_lowercase().contains(&needle))
+                        .unwrap_or(false)
+            })
+            .cloned()
+            .collect();
+        if limit > 0 {
+            questions.truncate(limit as usize);
+        }
+        Ok(questions)
+    }
 }
 
 #[cfg(test)]
@@ -572,6 +633,30 @@ mod tests {
             .await
             .expect("empty");
         assert!(none.is_empty());
+    }
+
+    #[tokio::test]
+    async fn in_memory_search_matches_stem_and_filters() {
+        let bank = InMemoryQuestionBank::new();
+        let all = bank
+            .search_questions("question", "", 0, 0)
+            .await
+            .expect("all");
+        assert_eq!(all.len(), 24);
+
+        let filtered = bank
+            .search_questions("mechanics", "mechanics", 2, 0)
+            .await
+            .expect("filtered");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "mechanics-2");
+
+        let limited = bank
+            .search_questions("", "optics", 0, 1)
+            .await
+            .expect("limited");
+        assert_eq!(limited.len(), 1);
+        assert_eq!(limited[0].chapter_id, "optics");
     }
 
     #[test]

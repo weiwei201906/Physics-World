@@ -6,14 +6,16 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::State;
+use axum::extract::{FromRequestParts, State};
+use axum::http::header::AUTHORIZATION;
+use axum::http::request::Parts;
+use axum::http::HeaderMap;
 use axum::response::Response;
 use axum::routing::get;
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use common::clock::Clock;
 use common::error::{AppError, Result};
-use common::identity::Authenticated;
 use futures_util::future::pending;
 use serde::Serialize;
 use tokio::sync::broadcast;
@@ -22,7 +24,8 @@ use uuid::Uuid;
 use crate::engine::RoomPhase;
 use crate::protocol::{ClientMessage, ServerMessage};
 use crate::settings::Settings;
-use crate::store::{BattleStore, EnqueueResult};
+use crate::store::{question_message, room_state_message, BattleStore, EnqueueResult};
+use crate::vector::{VectorSource, ZeroVectorSource};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -79,6 +82,7 @@ pub struct AppState {
     pub settings: Arc<Settings>,
     pub clock: Arc<dyn Clock>,
     pub tokens: Arc<dyn TokenValidator>,
+    pub vectors: Arc<dyn VectorSource>,
 }
 
 impl AppState {
@@ -93,7 +97,14 @@ impl AppState {
             settings: Arc::new(settings),
             clock,
             tokens,
+            vectors: Arc::new(ZeroVectorSource),
         }
+    }
+
+    /// Uses `source` for matchmaking vectors; the zero source keeps FIFO.
+    pub fn with_vector_source(mut self, source: Arc<dyn VectorSource>) -> Self {
+        self.vectors = source;
+        self
     }
 }
 
@@ -117,16 +128,69 @@ async fn health() -> Json<HealthResponse> {
     })
 }
 
+#[derive(Debug, Clone, Copy)]
+struct WsIdentity {
+    user_id: Uuid,
+    expires_at: DateTime<Utc>,
+}
+
+fn query_token(query: &str) -> Option<String> {
+    query
+        .split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .find(|(key, _)| *key == "token")
+        .map(|(_, value)| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+impl FromRequestParts<AppState> for WsIdentity {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> std::result::Result<Self, Self::Rejection> {
+        let token = parts
+            .uri
+            .query()
+            .and_then(query_token)
+            .or_else(|| bearer_token(&parts.headers))
+            .ok_or_else(|| AppError::unauthenticated("missing access token"))?;
+        let claims = state.tokens.validate(&token).await?;
+        Ok(Self {
+            user_id: claims.user_id,
+            expires_at: claims.expires_at,
+        })
+    }
+}
+
 async fn ws_handler(
-    Authenticated(identity): Authenticated,
+    WsIdentity {
+        user_id,
+        expires_at,
+    }: WsIdentity,
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
 ) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, identity.user_id, state))
+    ws.on_upgrade(move |socket| handle_socket(socket, user_id, expires_at, state))
 }
 
-async fn handle_socket(mut socket: WebSocket, user_id: Uuid, state: AppState) {
-    let mut token_exp: Option<DateTime<Utc>> = None;
+async fn handle_socket(
+    mut socket: WebSocket,
+    user_id: Uuid,
+    expires_at: DateTime<Utc>,
+    state: AppState,
+) {
+    let mut token_exp: Option<DateTime<Utc>> = Some(expires_at);
     let mut room_id: Option<Uuid> = None;
     let mut receiver: Option<broadcast::Receiver<ServerMessage>> = None;
     let mut ticker = tokio::time::interval(TICK_INTERVAL);
@@ -222,58 +286,63 @@ async fn handle_client_message(
     message: ClientMessage,
 ) -> bool {
     match message {
-        ClientMessage::Enqueue => match state.store.enqueue(user_id).await {
-            Ok(EnqueueResult::Waiting {
-                room_id: waiting_room,
-                receiver: room_receiver,
-            }) => {
-                *room_id = Some(waiting_room);
-                *receiver = Some(room_receiver);
-            }
-            Ok(EnqueueResult::Matched {
-                room_id: matched_room,
-                receiver: room_receiver,
-                ..
-            }) => {
-                *room_id = Some(matched_room);
-                *receiver = Some(room_receiver);
-            }
-            Err(error) => {
-                let code = error.code();
-                send_error(socket, code, error.to_string()).await;
-            }
-        },
-        ClientMessage::Answer {
-            room_id: requested_room,
-            question_index,
-            option,
-        } => {
-            if Some(requested_room) != *room_id {
-                send_error(
-                    socket,
-                    "not_in_room",
-                    "answer does not match the active room",
-                )
-                .await;
-                return true;
-            }
-            if token_exp.is_some_and(|expires| state.clock.now() >= expires) {
-                send_error(
-                    socket,
-                    "token_expired",
-                    "access token expired; send a token message to refresh",
-                )
-                .await;
-                return true;
-            }
+        ClientMessage::FindMatch { .. } => {
+            let profile = state.vectors.profile(user_id).await;
             match state
                 .store
-                .answer(user_id, requested_room, question_index, option)
+                .enqueue_with_profile(user_id, profile.nickname, profile.vector)
                 .await
             {
-                Ok(outcome) => {
-                    if outcome.phase == RoomPhase::Finished {
-                        tracing::info!(room_id = %requested_room, "room finished");
+                Ok(EnqueueResult::Waiting {
+                    room_id: waiting_room,
+                    receiver: room_receiver,
+                }) => {
+                    *room_id = Some(waiting_room);
+                    *receiver = Some(room_receiver);
+                }
+                Ok(EnqueueResult::Matched {
+                    room_id: matched_room,
+                    receiver: room_receiver,
+                    ..
+                }) => {
+                    *room_id = Some(matched_room);
+                    *receiver = Some(room_receiver);
+                }
+                Err(error) => {
+                    let code = error.code();
+                    send_error(socket, code, error.to_string()).await;
+                }
+            }
+        }
+        ClientMessage::CancelMatch => {
+            if let Err(error) = state.store.leave(user_id).await {
+                tracing::warn!(error = %error, user_id = %user_id, "leave failed");
+            }
+            *room_id = None;
+            *receiver = None;
+        }
+        ClientMessage::JoinRoom {
+            room_id: requested_room,
+        } => {
+            let room_receiver = match state.store.subscribe(requested_room).await {
+                Ok(room_receiver) => room_receiver,
+                Err(error) => {
+                    let code = error.code();
+                    send_error(socket, code, error.to_string()).await;
+                    return true;
+                }
+            };
+            match state.store.join(user_id, requested_room).await {
+                Ok((view, question)) => {
+                    *room_id = Some(requested_room);
+                    *receiver = Some(room_receiver);
+                    if !send_message(socket, &room_state_message(&view)).await {
+                        return false;
+                    }
+                    if let Some(question) = question {
+                        if !send_message(socket, &question_message(&question)).await {
+                            return false;
+                        }
                     }
                 }
                 Err(error) => {
@@ -282,14 +351,40 @@ async fn handle_client_message(
                 }
             }
         }
-        ClientMessage::Leave => {
-            if let Err(error) = state.store.leave(user_id).await {
-                tracing::warn!(error = %error, user_id = %user_id, "leave failed");
+        ClientMessage::Answer {
+            question_index,
+            option_id,
+        } => {
+            let Some(active_room) = *room_id else {
+                send_error(socket, "not_in_room", "join a room before answering").await;
+                return true;
+            };
+            if token_exp.is_some_and(|expires| state.clock.now() >= expires) {
+                send_error(
+                    socket,
+                    "token_expired",
+                    "access token expired; send a token update to refresh",
+                )
+                .await;
+                return true;
             }
-            *room_id = None;
-            *receiver = None;
+            match state
+                .store
+                .answer(user_id, active_room, question_index, option_id)
+                .await
+            {
+                Ok(outcome) => {
+                    if outcome.phase == RoomPhase::Finished {
+                        tracing::info!(room_id = %active_room, "room finished");
+                    }
+                }
+                Err(error) => {
+                    let code = error.code();
+                    send_error(socket, code, error.to_string()).await;
+                }
+            }
         }
-        ClientMessage::Token { token } => match state.tokens.validate(&token).await {
+        ClientMessage::TokenUpdate { token } => match state.tokens.validate(&token).await {
             Ok(claims) if claims.user_id == user_id => {
                 *token_exp = Some(claims.expires_at);
             }
@@ -377,17 +472,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn websocket_handshake_requires_gateway_identity() {
+    async fn websocket_handshake_requires_access_token() {
         let response = router(test_state())
             .oneshot(
                 Request::builder()
                     .uri("/ws/battle")
+                    .header("connection", "upgrade")
+                    .header("upgrade", "websocket")
+                    .header("sec-websocket-version", "13")
+                    .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
                     .body(Body::empty())
                     .expect("request"),
             )
             .await
             .expect("response");
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "got {:?}",
+            response.status()
+        );
     }
 
     #[tokio::test]

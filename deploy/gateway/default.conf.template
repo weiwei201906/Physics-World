@@ -178,9 +178,10 @@ server {
         proxy_read_timeout 60s;
     }
 
-    # Battle WebSocket. The browser cannot attach an Authorization header to
-    # a WebSocket handshake, so the service performs token validation on the
-    # first frame instead of relying on auth_request here.
+    # Battle WebSocket. The browser cannot attach an Authorization header to a
+    # handshake, so the access token travels in the query string. nginx cannot
+    # forward query arguments into an auth_request sub-request, so
+    # battle-service verifies the token with auth-service before upgrading.
     location = /ws/battle {
         proxy_pass http://${BATTLE_UPSTREAM};
         proxy_http_version 1.1;
