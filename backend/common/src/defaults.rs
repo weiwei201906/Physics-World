@@ -116,6 +116,10 @@ pub const ALERTS_CONSUMER_LAG_WARN: i64 = 500;
 pub const ALERTS_REDIS_EVICTED_KEYS_WARN: i64 = 1;
 pub const ALERTS_BATTLE_RECONCILE_PENDING_WARN: i64 = 1;
 
+pub const DATABASE_URL: &str =
+    "postgres://physics_world:physics_world@127.0.0.1:15432/physics_world";
+pub const REDIS_URL: &str = "redis://127.0.0.1:16379/0";
+
 pub const QBANK_GRPC_ADDR: &str = "http://127.0.0.1:50051";
 pub const QBANK_GRPC_TIMEOUT_SEC: i64 = 30;
 

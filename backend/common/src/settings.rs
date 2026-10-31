@@ -557,6 +557,37 @@ impl ServerSettings {
     }
 }
 
+/// PostgreSQL and Redis connection targets for a single service.
+///
+/// Resolution order for each URL: `<SERVICE>_<NAME>_URL` (for example
+/// `AUTH_DATABASE_URL`), then the shared `<NAME>_URL`, then the local
+/// development default. Deployments set the scoped variables explicitly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatabaseSettings {
+    pub database_url: String,
+    pub redis_url: String,
+}
+
+impl DatabaseSettings {
+    pub fn from_env(namespace: &str) -> Self {
+        let prefix = namespace.to_ascii_uppercase().replace('-', "_");
+        let database_url = std::env::var(format!("{prefix}_DATABASE_URL"))
+            .or_else(|_| std::env::var("DATABASE_URL"))
+            .ok();
+        let redis_url = std::env::var(format!("{prefix}_REDIS_URL"))
+            .or_else(|_| std::env::var("REDIS_URL"))
+            .ok();
+        Self::from_values(database_url, redis_url)
+    }
+
+    fn from_values(database_url: Option<String>, redis_url: Option<String>) -> Self {
+        Self {
+            database_url: database_url.unwrap_or_else(|| defaults::DATABASE_URL.to_string()),
+            redis_url: redis_url.unwrap_or_else(|| defaults::REDIS_URL.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ConfigSettings {
     pub write_retry_times: u32,
@@ -724,6 +755,20 @@ mod tests {
         assert!(settings.score_wrong < 0);
         assert!(settings.speed_bonus_max > 0);
         assert_eq!(settings.total_sec, defaults::BATTLE_MATCH_TOTAL_SEC);
+    }
+
+    #[test]
+    fn database_settings_fall_back_to_local_defaults() {
+        let settings = DatabaseSettings::from_values(None, None);
+        assert_eq!(settings.database_url, defaults::DATABASE_URL);
+        assert_eq!(settings.redis_url, defaults::REDIS_URL);
+
+        let settings = DatabaseSettings::from_values(
+            Some("postgres://example/db".to_string()),
+            Some("redis://example:6379/1".to_string()),
+        );
+        assert_eq!(settings.database_url, "postgres://example/db");
+        assert_eq!(settings.redis_url, "redis://example:6379/1");
     }
 
     #[test]
