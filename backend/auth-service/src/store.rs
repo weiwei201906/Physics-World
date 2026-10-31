@@ -1,12 +1,13 @@
-//! In-process identity store.
+//! Identity store abstraction.
 //!
-//! The production deployment swaps this for PostgreSQL plus Redis. The trait
-//! shape stays the same: users keyed by id and normalized email, refresh tokens
-//! keyed by their SHA-256 digest.
+//! [`MemoryAuthStore`] keeps everything in process for unit tests. Production
+//! wires [`crate::pg_store::PgAuthStore`], which persists users and refresh
+//! tokens in PostgreSQL and mirrors family revocations into Redis.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use common::error::{AppError, Result};
 use uuid::Uuid;
@@ -39,6 +40,34 @@ pub struct Rotation {
     pub family_id: Uuid,
 }
 
+#[async_trait]
+pub trait AuthStore: Send + Sync {
+    async fn create_user(
+        &self,
+        email: &str,
+        password_hash: String,
+        nickname: String,
+        now: DateTime<Utc>,
+    ) -> Result<User>;
+
+    async fn find_user_by_email(&self, email: &str) -> Result<Option<User>>;
+
+    async fn find_user(&self, id: Uuid) -> Result<Option<User>>;
+
+    async fn insert_refresh(&self, token: RefreshToken) -> Result<()>;
+
+    /// Marks the presented token as rotated. Tokens replayed inside the grace
+    /// window are tolerated; replays after the window revoke the whole family.
+    async fn rotate_refresh(
+        &self,
+        token_hash: &str,
+        now: DateTime<Utc>,
+        grace: Duration,
+    ) -> Result<Rotation>;
+
+    async fn revoke_family_of(&self, token_hash: &str) -> Result<()>;
+}
+
 #[derive(Debug, Default)]
 struct Inner {
     users: HashMap<Uuid, User>,
@@ -47,11 +76,11 @@ struct Inner {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct AuthStore {
+pub struct MemoryAuthStore {
     inner: Arc<Mutex<Inner>>,
 }
 
-impl AuthStore {
+impl MemoryAuthStore {
     pub fn new() -> Self {
         Self::default()
     }
@@ -61,8 +90,11 @@ impl AuthStore {
             .lock()
             .map_err(|_| AppError::internal("auth store poisoned"))
     }
+}
 
-    pub fn create_user(
+#[async_trait]
+impl AuthStore for MemoryAuthStore {
+    async fn create_user(
         &self,
         email: &str,
         password_hash: String,
@@ -87,25 +119,27 @@ impl AuthStore {
         Ok(user)
     }
 
-    pub fn find_user_by_email(&self, email: &str) -> Option<User> {
-        let inner = self.lock().ok()?;
-        let id = inner.emails.get(email)?;
-        inner.users.get(id).cloned()
+    async fn find_user_by_email(&self, email: &str) -> Result<Option<User>> {
+        let inner = self.lock()?;
+        Ok(inner
+            .emails
+            .get(email)
+            .and_then(|id| inner.users.get(id))
+            .cloned())
     }
 
-    pub fn find_user(&self, id: Uuid) -> Option<User> {
-        self.lock().ok()?.users.get(&id).cloned()
+    async fn find_user(&self, id: Uuid) -> Result<Option<User>> {
+        let inner = self.lock()?;
+        Ok(inner.users.get(&id).cloned())
     }
 
-    pub fn insert_refresh(&self, token: RefreshToken) -> Result<()> {
+    async fn insert_refresh(&self, token: RefreshToken) -> Result<()> {
         let mut inner = self.lock()?;
         inner.refresh.insert(token.token_hash.clone(), token);
         Ok(())
     }
 
-    /// Marks the presented token as rotated. Tokens replayed inside the grace
-    /// window are tolerated; replays after the window revoke the whole family.
-    pub fn rotate_refresh(
+    async fn rotate_refresh(
         &self,
         token_hash: &str,
         now: DateTime<Utc>,
@@ -148,7 +182,7 @@ impl AuthStore {
         }
     }
 
-    pub fn revoke_family_of(&self, token_hash: &str) -> Result<()> {
+    async fn revoke_family_of(&self, token_hash: &str) -> Result<()> {
         let mut inner = self.lock()?;
         if let Some(family_id) = inner.refresh.get(token_hash).map(|token| token.family_id) {
             for token in inner.refresh.values_mut() {
@@ -165,11 +199,7 @@ impl AuthStore {
 mod tests {
     use super::*;
 
-    fn now() -> DateTime<Utc> {
-        Utc::now()
-    }
-
-    fn token(store: &AuthStore, family: Uuid, hash: &str, now: DateTime<Utc>) {
+    async fn token(store: &MemoryAuthStore, family: Uuid, hash: &str, now: DateTime<Utc>) {
         store
             .insert_refresh(RefreshToken {
                 token_hash: hash.to_string(),
@@ -180,56 +210,63 @@ mod tests {
                 rotated_at: None,
                 revoked: false,
             })
+            .await
             .expect("insert token");
     }
 
-    #[test]
-    fn duplicate_email_is_rejected_case_insensitively_by_caller() {
-        let store = AuthStore::new();
+    #[tokio::test]
+    async fn duplicate_email_is_rejected_case_insensitively_by_caller() {
+        let store = MemoryAuthStore::new();
         store
             .create_user(
                 "player@example.com",
                 "hash".to_string(),
                 "player".to_string(),
-                now(),
+                Utc::now(),
             )
+            .await
             .expect("create");
         let error = store
             .create_user(
                 "player@example.com",
                 "hash".to_string(),
                 "player".to_string(),
-                now(),
+                Utc::now(),
             )
+            .await
             .expect_err("duplicate");
         assert_eq!(error.code(), "conflict");
     }
 
-    #[test]
-    fn replay_inside_grace_is_allowed_but_after_grace_revokes_family() {
-        let store = AuthStore::new();
-        let start = now();
-        token(&store, Uuid::new_v4(), "t1", start);
+    #[tokio::test]
+    async fn replay_inside_grace_is_allowed_but_after_grace_revokes_family() {
+        let store = MemoryAuthStore::new();
+        let start = Utc::now();
+        token(&store, Uuid::new_v4(), "t1", start).await;
         store
             .rotate_refresh("t1", start, Duration::seconds(5))
+            .await
             .expect("first rotation");
         store
             .rotate_refresh("t1", start + Duration::seconds(2), Duration::seconds(5))
+            .await
             .expect("replay within grace");
         let error = store
             .rotate_refresh("t1", start + Duration::seconds(10), Duration::seconds(5))
+            .await
             .expect_err("replay outside grace");
         assert_eq!(error.code(), "forbidden");
         let revoked = store
             .rotate_refresh("t1", start + Duration::seconds(11), Duration::seconds(5))
+            .await
             .expect_err("revoked");
         assert_eq!(revoked.code(), "unauthenticated");
     }
 
-    #[test]
-    fn expired_tokens_are_rejected() {
-        let store = AuthStore::new();
-        let start = now();
+    #[tokio::test]
+    async fn expired_tokens_are_rejected() {
+        let store = MemoryAuthStore::new();
+        let start = Utc::now();
         store
             .insert_refresh(RefreshToken {
                 token_hash: "t1".to_string(),
@@ -240,9 +277,11 @@ mod tests {
                 rotated_at: None,
                 revoked: false,
             })
+            .await
             .expect("insert");
         let error = store
             .rotate_refresh("t1", start, Duration::seconds(5))
+            .await
             .expect_err("expired");
         assert_eq!(error.code(), "unauthenticated");
     }

@@ -24,7 +24,7 @@ use crate::tokens::{hash_refresh_token, KeyRing};
 #[derive(Clone)]
 pub struct AppState {
     pub settings: Arc<AuthSettings>,
-    pub store: Arc<AuthStore>,
+    pub store: Arc<dyn AuthStore>,
     pub keys: Arc<KeyRing>,
     pub clock: Arc<dyn Clock>,
 }
@@ -32,7 +32,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         settings: AuthSettings,
-        store: Arc<AuthStore>,
+        store: Arc<dyn AuthStore>,
         keys: Arc<KeyRing>,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -51,7 +51,7 @@ pub fn router(state: AppState) -> Router {
         .route("/ready", get(health))
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
-        .route("/auth/refresh", post(refresh))
+        .route("/auth/refresh-token", post(refresh))
         .route("/auth/logout", post(logout))
         .route("/auth/verify", get(verify))
         .route("/.well-known/jwks.json", get(jwks))
@@ -73,6 +73,7 @@ async fn health() -> Json<HealthResponse> {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct UserView {
     id: Uuid,
     email: String,
@@ -114,10 +115,12 @@ struct RefreshRequest {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct TokenResponse {
     access_token: String,
     token_type: &'static str,
     expires_in: i64,
+    exp: i64,
     refresh_token: String,
     user: UserView,
 }
@@ -170,8 +173,11 @@ async fn register(
         .unwrap_or_else(|| defaults::PLACEHOLDER_NICKNAME.to_string());
     let user = state
         .store
-        .create_user(&email, password_hash, nickname, state.clock.now())?;
-    Ok((StatusCode::CREATED, Json(UserView::from(&user))).into_response())
+        .create_user(&email, password_hash, nickname, state.clock.now())
+        .await?;
+    let mut response = issue_tokens(&state, &user, None).await?;
+    *response.status_mut() = StatusCode::CREATED;
+    Ok(response)
 }
 
 async fn login(
@@ -182,6 +188,7 @@ async fn login(
     let user = state
         .store
         .find_user_by_email(&email)
+        .await?
         .ok_or_else(|| AppError::unauthenticated("invalid email or password"))?;
     let verified = verify_in_background(
         state.settings.clone(),
@@ -192,7 +199,7 @@ async fn login(
     if !verified {
         return Err(AppError::unauthenticated("invalid email or password"));
     }
-    issue_tokens(&state, &user, None)
+    issue_tokens(&state, &user, None).await
 }
 
 async fn refresh(
@@ -204,16 +211,20 @@ async fn refresh(
         .refresh_token
         .or_else(|| cookie_token(&headers, &state.settings.cookie_name))
         .ok_or_else(|| AppError::unauthenticated("missing refresh token"))?;
-    let rotation = state.store.rotate_refresh(
-        &hash_refresh_token(&raw),
-        state.clock.now(),
-        state.settings.refresh_grace(),
-    )?;
+    let rotation = state
+        .store
+        .rotate_refresh(
+            &hash_refresh_token(&raw),
+            state.clock.now(),
+            state.settings.refresh_grace(),
+        )
+        .await?;
     let user = state
         .store
         .find_user(rotation.user_id)
+        .await?
         .ok_or_else(|| AppError::unauthenticated("refresh token owner is missing"))?;
-    issue_tokens(&state, &user, Some(rotation.family_id))
+    issue_tokens(&state, &user, Some(rotation.family_id)).await
 }
 
 async fn logout(
@@ -225,7 +236,10 @@ async fn logout(
         .and_then(|Json(request)| request.refresh_token)
         .or_else(|| cookie_token(&headers, &state.settings.cookie_name));
     if let Some(raw) = raw {
-        state.store.revoke_family_of(&hash_refresh_token(&raw))?;
+        state
+            .store
+            .revoke_family_of(&hash_refresh_token(&raw))
+            .await?;
     }
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -261,7 +275,7 @@ async fn verify(State(state): State<AppState>, headers: HeaderMap) -> Result<Res
     Ok(response)
 }
 
-fn issue_tokens(state: &AppState, user: &User, family_id: Option<Uuid>) -> Result<Response> {
+async fn issue_tokens(state: &AppState, user: &User, family_id: Option<Uuid>) -> Result<Response> {
     let now = state.clock.now();
     let (access_token, expires_in) = state.keys.issue_access_token(
         user.id,
@@ -273,19 +287,23 @@ fn issue_tokens(state: &AppState, user: &User, family_id: Option<Uuid>) -> Resul
     let refresh_raw = state
         .keys
         .generate_refresh_token(state.settings.refresh_token_bytes)?;
-    state.store.insert_refresh(RefreshToken {
-        token_hash: hash_refresh_token(&refresh_raw),
-        family_id: family_id.unwrap_or_else(Uuid::new_v4),
-        user_id: user.id,
-        created_at: now,
-        expires_at: now + state.settings.refresh_ttl(),
-        rotated_at: None,
-        revoked: false,
-    })?;
+    state
+        .store
+        .insert_refresh(RefreshToken {
+            token_hash: hash_refresh_token(&refresh_raw),
+            family_id: family_id.unwrap_or_else(Uuid::new_v4),
+            user_id: user.id,
+            created_at: now,
+            expires_at: now + state.settings.refresh_ttl(),
+            rotated_at: None,
+            revoked: false,
+        })
+        .await?;
     let body = TokenResponse {
         access_token,
         token_type: "Bearer",
         expires_in,
+        exp: now.timestamp() + expires_in,
         refresh_token: refresh_raw.clone(),
         user: UserView::from(user),
     };

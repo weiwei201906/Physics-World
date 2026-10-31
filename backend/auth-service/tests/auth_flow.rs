@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use auth_service::store::AuthStore;
+use auth_service::store::MemoryAuthStore;
 use auth_service::tokens::{Claims, KeyRing};
 use auth_service::{router, AppState};
 use axum::body::Body;
@@ -33,7 +33,7 @@ fn harness() -> Harness {
     let keys = Arc::new(KeyRing::generate(defaults::AUTH_JWT_KEY_ID).expect("key ring"));
     let state = AppState::new(
         settings,
-        Arc::new(AuthStore::new()),
+        Arc::new(MemoryAuthStore::new()),
         keys,
         clock.clone() as Arc<dyn Clock>,
     );
@@ -97,7 +97,7 @@ async fn refresh(state: &AppState, token: &str) -> (StatusCode, Value) {
     call(
         state,
         "POST",
-        "/auth/refresh",
+        "/auth/refresh-token",
         Some(json!({"refresh_token": token})),
     )
     .await
@@ -117,26 +117,34 @@ async fn register_then_login_returns_verifiable_access_token() {
     let harness = harness();
     let (status, user) = register(&harness.state, "player@example.com", "s3cret-pass").await;
     assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(user["email"], "player@example.com");
-    assert_eq!(user["nickname"], "Player");
-    assert_eq!(user["roles"][0], "student");
+    assert_eq!(user["user"]["email"], "player@example.com");
+    assert_eq!(user["user"]["nickname"], "Player");
+    assert_eq!(user["user"]["roles"][0], "student");
+    assert!(!user["accessToken"]
+        .as_str()
+        .expect("register token")
+        .is_empty());
 
     let (status, body) = login(&harness.state, "Player@Example.com", "s3cret-pass").await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["token_type"], "Bearer");
-    assert_eq!(body["expires_in"], 900);
+    assert_eq!(body["tokenType"], "Bearer");
+    assert_eq!(body["expiresIn"], 900);
+    assert_eq!(body["exp"], harness.clock.now().timestamp() + 900);
 
     let mut validation = Validation::new(Algorithm::RS256);
     validation.set_audience(&["user-api"]);
     validation.set_issuer(&[defaults::AUTH_JWT_ISSUER]);
     let decoded = decode::<Claims>(
-        body["access_token"].as_str().expect("access token"),
+        body["accessToken"].as_str().expect("access token"),
         &DecodingKey::from_rsa_pem(harness.state.keys.public_pem().as_bytes())
             .expect("decoding key"),
         &validation,
     )
     .expect("decode");
-    assert_eq!(decoded.claims.sub, user["id"].as_str().expect("user id"));
+    assert_eq!(
+        decoded.claims.sub,
+        user["user"]["id"].as_str().expect("user id")
+    );
     assert_eq!(decoded.claims.email, "player@example.com");
     assert_eq!(decoded.claims.exp, harness.clock.now().timestamp() + 900);
 }
@@ -176,12 +184,12 @@ async fn refresh_rotates_and_reuse_after_grace_revokes_family() {
     let harness = harness();
     register(&harness.state, "player@example.com", "s3cret-pass").await;
     let (_, session) = login(&harness.state, "player@example.com", "s3cret-pass").await;
-    let original = session["refresh_token"].as_str().expect("refresh token");
+    let original = session["refreshToken"].as_str().expect("refresh token");
 
     harness.clock.advance(Duration::seconds(1));
     let (status, first) = refresh(&harness.state, original).await;
     assert_eq!(status, StatusCode::OK);
-    assert_ne!(first["refresh_token"], original);
+    assert_ne!(first["refreshToken"], original);
 
     harness.clock.advance(Duration::seconds(2));
     let (status, _) = refresh(&harness.state, original).await;
@@ -196,7 +204,7 @@ async fn refresh_rotates_and_reuse_after_grace_revokes_family() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["code"], "forbidden");
 
-    let rotated = first["refresh_token"].as_str().expect("rotated token");
+    let rotated = first["refreshToken"].as_str().expect("rotated token");
     let (status, body) = refresh(&harness.state, rotated).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(body["code"], "unauthenticated");
@@ -207,7 +215,7 @@ async fn logout_revokes_the_refresh_family() {
     let harness = harness();
     register(&harness.state, "player@example.com", "s3cret-pass").await;
     let (_, session) = login(&harness.state, "player@example.com", "s3cret-pass").await;
-    let token = session["refresh_token"].as_str().expect("refresh token");
+    let token = session["refreshToken"].as_str().expect("refresh token");
 
     let (status, _) = call(
         &harness.state,
@@ -243,7 +251,7 @@ async fn verify_returns_identity_headers_for_the_gateway() {
     let harness = harness();
     register(&harness.state, "player@example.com", "s3cret-pass").await;
     let (_, session) = login(&harness.state, "player@example.com", "s3cret-pass").await;
-    let token = session["access_token"].as_str().expect("access token");
+    let token = session["accessToken"].as_str().expect("access token");
 
     let (status, headers) = call_with_bearer(&harness.state, "/auth/verify", token).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
