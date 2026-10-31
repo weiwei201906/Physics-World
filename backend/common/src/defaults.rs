@@ -1,0 +1,131 @@
+//! Centralized default values for every operational parameter.
+//!
+//! These literals are the single source of truth. Service code never embeds
+//! numeric thresholds directly; it reads them through [`crate::config`] with
+//! these defaults and reports missing keys at startup.
+
+pub const AUTH_JWT_ACCESS_TTL_SEC: i64 = 900;
+pub const AUTH_JWT_REFRESH_TTL_DAYS: i64 = 30;
+pub const AUTH_JWT_ROTATE_DAYS: i64 = 90;
+pub const AUTH_JWT_LEEWAY_SEC: i64 = 60;
+pub const AUTH_REFRESH_GRACE_SEC: i64 = 5;
+pub const AUTH_REFRESH_RATE_LIMIT_PER_MIN: i64 = 10;
+pub const AUTH_LOGIN_RATE_LIMIT_PER_EMAIL: i64 = 5;
+pub const AUTH_LOGIN_RATE_LIMIT_PER_IP: i64 = 20;
+pub const AUTH_LOGIN_RATE_LIMIT_WINDOW_SEC: i64 = 900;
+pub const AUTH_PASSWORD_MIN_LENGTH: u32 = 8;
+pub const AUTH_ARGON2_MEMORY_KB: u32 = 65536;
+pub const AUTH_ARGON2_ITERATIONS: u32 = 3;
+pub const AUTH_ARGON2_PARALLELISM: u32 = 4;
+pub const AUTH_COOKIE_SAME_SITE: &str = "Strict";
+pub const AUTH_COOKIE_MAX_AGE_DAYS: i64 = 30;
+pub const AUTH_COOKIE_SECURE: bool = true;
+pub const AUTH_COOKIE_NAME: &str = "refresh_token";
+pub const AUTH_COOKIE_PATH: &str = "/auth";
+pub const AUTH_REFRESH_TOKEN_BYTES: usize = 32;
+pub const AUTH_JWT_ISSUER: &str = "physics-world";
+pub const AUTH_JWT_KEY_ID: &str = "auth-2026-01";
+
+pub const USER_API_SUBMIT_CONSISTENCY_WINDOW_SEC: i64 = 3;
+pub const USER_API_SESSION_MAX_DURATION_SEC: i64 = 3600;
+pub const USER_API_SESSION_MAX_QUESTIONS: u32 = 50;
+pub const USER_API_LEADERBOARD_TOP_CACHE_SIZE: u32 = 100;
+pub const USER_API_LEADERBOARD_TOP_CACHE_TTL_SEC: i64 = 60;
+pub const USER_API_LEADERBOARD_OLD_KEY_RETENTION_HOURS: i64 = 24;
+pub const USER_API_LEADERBOARD_PAGE_SIZE_MAX: u32 = 100;
+pub const USER_API_LEADERBOARD_PERIODS: [&str; 3] = ["daily", "weekly", "all"];
+pub const USER_API_ADMIN_ALLOWED_CIDRS: [&str; 1] = ["10.0.0.0/8"];
+pub const USER_API_SSE_MAX_CONNECTIONS_PER_POD: u32 = 5000;
+pub const USER_API_PG_POOL_SIZE_PER_POD: u32 = 20;
+
+pub const USER_API_SSE_MAX_CONNECTIONS: u32 = 5000;
+pub const USER_API_SSE_DRAIN_SEC: i64 = 30;
+pub const USER_API_SSE_KEEPALIVE_SEC: i64 = 30;
+
+pub const RECOMMENDATION_SLO_READ_P99_MS: i64 = 100;
+pub const RECOMMENDATION_DEFAULT_COUNT: u32 = 10;
+pub const RECOMMENDATION_MAX_COUNT: u32 = 50;
+pub const RECOMMENDATION_CHAPTER_DIMS: [&str; 8] = [
+    "mechanics",
+    "thermodynamics",
+    "optics",
+    "electromagnetism",
+    "modern",
+    "waves",
+    "fluids",
+    "experiments",
+];
+pub const RECOMMENDATION_DELTA_WRONG: f64 = 1.0;
+pub const RECOMMENDATION_DELTA_CORRECT: f64 = 0.2;
+pub const RECOMMENDATION_PGVECTOR_M: u32 = 16;
+pub const RECOMMENDATION_PGVECTOR_EF_CONSTRUCTION: u32 = 64;
+pub const RECOMMENDATION_PG_POOL_SIZE_PER_POD: u32 = 20;
+pub const RECOMMENDATION_FLUSHER_IDLE_LAG_THRESHOLD: i64 = 50;
+pub const RECOMMENDATION_FLUSHER_IDLE_QPS_THRESHOLD: i64 = 100;
+pub const RECOMMENDATION_FLUSHER_IDLE_BATCH_SIZE: u32 = 800;
+pub const RECOMMENDATION_FLUSHER_TIMER_INTERVAL_SEC: i64 = 30;
+pub const RECOMMENDATION_FLUSHER_TIMER_BATCH_SIZE: u32 = 100;
+pub const RECOMMENDATION_FLUSHER_EMERGENCY_THRESHOLD: i64 = 5000;
+pub const RECOMMENDATION_FLUSHER_MAX_CONCURRENCY: u32 = 8;
+pub const RECOMMENDATION_FLUSHER_LOCK_TTL_SEC: i64 = 30;
+
+pub const BATTLE_MATCH_QUESTIONS_PER_ROOM: u32 = 10;
+pub const BATTLE_MATCH_PER_QUESTION_SEC: i64 = 30;
+pub const BATTLE_MATCH_TOTAL_SEC: i64 = 600;
+pub const BATTLE_MATCH_ROOM_TTL_SEC: i64 = 7200;
+pub const BATTLE_MATCH_QUEUE_TIMEOUT_SEC: i64 = 60;
+pub const BATTLE_MATCH_MAX_ROOMS_PER_POD: u32 = 1000;
+pub const BATTLE_TOKEN_REFRESH_AHEAD_SEC: i64 = 120;
+pub const BATTLE_TOKEN_EXPIRED_GRACE_SEC: i64 = 300;
+pub const BATTLE_REVOKED_VERSION_POLL_SEC: i64 = 60;
+pub const BATTLE_WS_MAX_CONNECTIONS_PER_POD: u32 = 5000;
+pub const BATTLE_WS_PING_INTERVAL_SEC: i64 = 30;
+pub const BATTLE_SCORE_CORRECT: i32 = 100;
+pub const BATTLE_SCORE_WRONG: i32 = -20;
+pub const BATTLE_SCORE_SPEED_BONUS_MAX: i32 = 50;
+pub const BATTLE_RECONCILE_INTERVAL_SEC: i64 = 600;
+pub const BATTLE_RECONCILE_LOCK_TTL_SEC: i64 = 300;
+pub const BATTLE_RECONCILE_BATCH_SIZE: u32 = 500;
+pub const BATTLE_RECONCILE_STALE_THRESHOLD_SEC: i64 = 86400;
+pub const BATTLE_RECONCILE_ZSET_RETENTION_SEC: i64 = 86400;
+
+pub const CONSUMERS_MAX_RETRIES: u32 = 3;
+pub const CONSUMERS_RETRY_TTL_SEC: i64 = 3600;
+pub const CONSUMERS_IDEMPOTENCY_TTL_SEC: i64 = 86400;
+pub const CONSUMERS_BATCH_SIZE: u32 = 100;
+pub const CONSUMERS_COMMIT_INTERVAL_MS: i64 = 5000;
+pub const CONSUMERS_OFFSET_RESET_POLICY: &str = "latest";
+pub const CONSUMERS_KEDA_LAG_THRESHOLD: i64 = 100;
+pub const CONSUMERS_RETRY_BACKOFF_MS: i64 = 500;
+pub const CONSUMERS_DELIVERY_TIMEOUT_MS: i64 = 5000;
+
+pub const CONFIG_WRITE_RETRY_TIMES: u32 = 3;
+pub const CONFIG_RECONCILE_INTERVAL_SEC: i64 = 300;
+pub const CONFIG_EFFECTIVE_SLO_SEC: i64 = 30;
+pub const CONFIG_SNAPSHOT_AGE_WARN_SEC: i64 = 300;
+
+pub const ALERTS_AUTH_REFRESH_FAILURE_RATIO: f64 = 0.05;
+pub const ALERTS_FRONTEND_REFRESH_FAILURE_RATIO: f64 = 0.05;
+pub const ALERTS_LOGIN_FAILURE_RATIO: f64 = 0.3;
+pub const ALERTS_JWT_REJECT_RATIO: f64 = 0.05;
+pub const ALERTS_DLQ_MESSAGE_TOTAL: i64 = 1;
+pub const ALERTS_CONFIG_EFFECTIVE_SLO_MULTIPLIER: f64 = 2.0;
+pub const ALERTS_PROFILE_FLUSH_LAG_SEC: i64 = 300;
+pub const ALERTS_OUTBOX_PENDING_COUNT: i64 = 1000;
+pub const ALERTS_CONSUMER_LAG_WARN: i64 = 500;
+pub const ALERTS_REDIS_EVICTED_KEYS_WARN: i64 = 1;
+pub const ALERTS_BATTLE_RECONCILE_PENDING_WARN: i64 = 1;
+
+pub const QBANK_GRPC_ADDR: &str = "http://127.0.0.1:50051";
+pub const QBANK_GRPC_TIMEOUT_SEC: i64 = 30;
+
+pub const LOG_LEVEL: &str = "info";
+pub const SERVER_BIND_ADDR: &str = "0.0.0.0:8080";
+pub const AUTH_BIND_ADDR: &str = "0.0.0.0:8081";
+pub const USER_API_BIND_ADDR: &str = "0.0.0.0:8082";
+pub const USER_API_SSE_BIND_ADDR: &str = "0.0.0.0:8083";
+pub const RECOMMENDATION_BIND_ADDR: &str = "0.0.0.0:8084";
+pub const BATTLE_BIND_ADDR: &str = "0.0.0.0:8085";
+
+pub const PLACEHOLDER_EMAIL_SUFFIX: &str = "@physics-world.local";
+pub const PLACEHOLDER_NICKNAME: &str = "player";
