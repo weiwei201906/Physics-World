@@ -16,6 +16,7 @@
 #   AUTH_PORT           auth-service port (default 18081)
 #   USER_API_PORT       user-api port (default 18082)
 #   KEEP_LOGS           1 to keep the temporary run directory
+#   SMOKE_SKIP_DB       1 to skip starting and truncating the local database
 
 set -uo pipefail
 
@@ -28,6 +29,16 @@ GATEWAY_STATIC_DIR="${GATEWAY_STATIC_DIR:-$ROOT/frontend/dist}"
 AUTH_BIN="${AUTH_BIN:-$ROOT/backend/target/debug/auth-service}"
 USER_API_BIN="${USER_API_BIN:-$ROOT/backend/target/debug/user-api}"
 NGINX_BIN="${NGINX_BIN:-$(command -v nginx || true)}"
+
+DATABASE_URL="postgres://physics_world:physics_world@127.0.0.1:15432/physics_world"
+REDIS_URL="redis://127.0.0.1:16379/0"
+export DATABASE_URL REDIS_URL
+
+PSQL="$(command -v psql || true)"
+REDIS_CLI="$(command -v redis-cli || true)"
+if [ -z "$REDIS_CLI" ] && [ -x /tmp/pwdb/root/usr/bin/redis-cli ]; then
+    REDIS_CLI=/tmp/pwdb/root/usr/bin/redis-cli
+fi
 
 FAILURES=0
 BODY="$RUN_DIR/body.json"
@@ -69,6 +80,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if [ "${SMOKE_SKIP_DB:-0}" != "1" ]; then
+    printf '\npreparing local database\n'
+    ( cd "$ROOT" && bash scripts/dev_db.sh start ) || exit 1
+    if [ -z "$PSQL" ]; then
+        printf 'psql client not found\n' >&2
+        exit 1
+    fi
+    env -u LD_LIBRARY_PATH -u LD_PRELOAD LC_ALL=C LANG=C \
+        "$PSQL" "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -c \
+        'TRUNCATE TABLE auth.users, auth.refresh_tokens, app.user_profiles, app.quiz_sessions, app.attempts, question.chapters, question.questions, question.question_versions, config.config_audit' \
+        || exit 1
+fi
+
 http_code() {
     local method=$1 path=$2
     shift 2
@@ -102,6 +126,21 @@ expect_json() {
     fi
 }
 
+pg_count() {
+    env -u LD_LIBRARY_PATH -u LD_PRELOAD LC_ALL=C LANG=C \
+        "$PSQL" "$DATABASE_URL" -tAc "$1" 2>/dev/null
+}
+
+expect_min_rows() {
+    local label=$1 table=$2 min=$3 count
+    count=$(pg_count "SELECT count(*) FROM $table")
+    if [ -n "$count" ] && [ "$count" -ge "$min" ]; then
+        ok "$label ($count rows)"
+    else
+        bad "$label (expected at least $min, got ${count:-unknown})"
+    fi
+}
+
 wait_http() {
     local url=$1 name=$2
     for _ in $(seq 1 120); do
@@ -119,10 +158,12 @@ mkdir -p "$RUN_DIR/nginx"
 
 AUTH_BIND_ADDR="127.0.0.1:$AUTH_PORT" AUTH_COOKIE_SECURE=false \
     "$AUTH_BIN" >"$RUN_DIR/auth.log" 2>&1 &
-PIDS+=($!)
+AUTH_PID=$!
+PIDS+=("$AUTH_PID")
 USER_API_BIND_ADDR="127.0.0.1:$USER_API_PORT" \
     "$USER_API_BIN" >"$RUN_DIR/user-api.log" 2>&1 &
-PIDS+=($!)
+USER_API_PID=$!
+PIDS+=("$USER_API_PID")
 
 if ! wait_http "http://127.0.0.1:$AUTH_PORT/health" auth-service; then
     cat "$RUN_DIR/auth.log"; exit 1
@@ -131,9 +172,14 @@ if ! wait_http "http://127.0.0.1:$USER_API_PORT/health" user-api; then
     cat "$RUN_DIR/user-api.log"; exit 1
 fi
 
+SSE_UPSTREAM="${SSE_UPSTREAM:-127.0.0.1:${SSE_PORT:-8085}}"
+REC_UPSTREAM="${REC_UPSTREAM:-127.0.0.1:${REC_PORT:-8086}}"
+BATTLE_UPSTREAM="${BATTLE_UPSTREAM:-127.0.0.1:${BATTLE_PORT:-8087}}"
+
 GATEWAY_PORT="$GATEWAY_PORT" AUTH_UPSTREAM="127.0.0.1:$AUTH_PORT" \
 USER_API_UPSTREAM="127.0.0.1:$USER_API_PORT" GATEWAY_STATIC_DIR="$GATEWAY_STATIC_DIR" \
-    envsubst '${GATEWAY_PORT} ${AUTH_UPSTREAM} ${USER_API_UPSTREAM} ${GATEWAY_STATIC_DIR}' \
+SSE_UPSTREAM="$SSE_UPSTREAM" REC_UPSTREAM="$REC_UPSTREAM" BATTLE_UPSTREAM="$BATTLE_UPSTREAM" \
+    envsubst '${GATEWAY_PORT} ${AUTH_UPSTREAM} ${USER_API_UPSTREAM} ${GATEWAY_STATIC_DIR} ${SSE_UPSTREAM} ${REC_UPSTREAM} ${BATTLE_UPSTREAM}' \
     <"$ROOT/deploy/gateway/default.conf.template" >"$RUN_DIR/nginx/default.conf"
 cat >"$RUN_DIR/nginx/nginx.conf" <<EOF
 worker_processes 1;
@@ -185,17 +231,18 @@ expect_json "jwks exposes at least one key" '.keys | length'
 
 printf '\nregistration and login\n'
 EMAIL="smoke-$(date +%s)@example.com"
+PASSWORD='S3cretPassw0rd!'
 expect_status "register" 201 "POST" "$GW/auth/register" \
     -H 'Content-Type: application/json' \
-    --data "{\"email\":\"$EMAIL\",\"password\":\"S3cretPassw0rd!\",\"nickname\":\"Smoke\"}"
+    --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"nickname\":\"Smoke\"}"
 USER_ID=$(jq -r '.id // empty' "$BODY")
 expect_status "register duplicate" 409 "POST" "$GW/auth/register" \
     -H 'Content-Type: application/json' \
-    --data "{\"email\":\"$EMAIL\",\"password\":\"S3cretPassw0rd!\"}"
+    --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}"
 expect_status "login" 200 "POST" "$GW/auth/login" \
     -c "$RUN_DIR/cookies.txt" \
     -H 'Content-Type: application/json' \
-    --data "{\"email\":\"$EMAIL\",\"password\":\"S3cretPassw0rd!\"}"
+    --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}"
 cp "$BODY" "$RUN_DIR/login.json"
 TOKEN=$(jq -r '.access_token // empty' "$RUN_DIR/login.json")
 REFRESH=$(jq -r '.refresh_token // empty' "$RUN_DIR/login.json")
@@ -307,6 +354,65 @@ if [ -n "$REFRESH2" ]; then
     expect_status "refresh after logout" 401 "POST" "$GW/auth/refresh" \
         -H 'Content-Type: application/json' \
         --data "{\"refresh_token\":\"$REFRESH2\"}"
+fi
+
+printf '\ndatabase persistence\n'
+expect_min_rows "auth.users persisted" auth.users 1
+expect_min_rows "auth.refresh_tokens persisted" auth.refresh_tokens 1
+expect_min_rows "app.quiz_sessions persisted" app.quiz_sessions 1
+expect_min_rows "app.attempts persisted" app.attempts 1
+expect_min_rows "config.configs seeded" config.configs 5
+REDIS_PING=$(env -u LD_LIBRARY_PATH -u LD_PRELOAD "$REDIS_CLI" -p 16379 ping 2>/dev/null)
+if [ "$REDIS_PING" = "PONG" ]; then
+    ok "redis ping ($REDIS_PING)"
+else
+    bad "redis ping (expected PONG, got ${REDIS_PING:-unknown})"
+fi
+
+printf '\nrestart persistence\n'
+kill "$AUTH_PID" "$USER_API_PID" 2>/dev/null
+wait "$AUTH_PID" 2>/dev/null
+wait "$USER_API_PID" 2>/dev/null
+
+AUTH_BIND_ADDR="127.0.0.1:$AUTH_PORT" AUTH_COOKIE_SECURE=false \
+    "$AUTH_BIN" >>"$RUN_DIR/auth.log" 2>&1 &
+AUTH_PID=$!
+PIDS+=("$AUTH_PID")
+USER_API_BIND_ADDR="127.0.0.1:$USER_API_PORT" \
+    "$USER_API_BIN" >>"$RUN_DIR/user-api.log" 2>&1 &
+USER_API_PID=$!
+PIDS+=("$USER_API_PID")
+
+if ! wait_http "http://127.0.0.1:$AUTH_PORT/health" auth-service; then
+    cat "$RUN_DIR/auth.log"; exit 1
+fi
+if ! wait_http "http://127.0.0.1:$USER_API_PORT/health" user-api; then
+    cat "$RUN_DIR/user-api.log"; exit 1
+fi
+
+expect_status "login after restart" 200 "POST" "$GW/auth/login" \
+    -H 'Content-Type: application/json' \
+    --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}"
+NEW_TOKEN=$(jq -r '.access_token // empty' "$BODY")
+[ -n "$NEW_TOKEN" ] && ok "restart login returned access token" \
+    || bad "restart login returned no access token"
+
+if [ -n "$SESSION_ID" ] && [ -n "$NEW_TOKEN" ]; then
+    jq -n --arg sid "$SESSION_ID" \
+        '{query: "query($id: UUID!) { quizSession(id: $id) { status currentIndex } }", variables: {id: $sid}}' \
+        >"$RUN_DIR/session-after-restart.json"
+    expect_status "quiz session after restart" 200 "POST" "$GW/graphql" \
+        -H 'Content-Type: application/json' -H "Authorization: Bearer $NEW_TOKEN" \
+        --data-binary "@$RUN_DIR/session-after-restart.json"
+    STATUS=$(jq -r '.data.quizSession.status // empty' "$BODY")
+    INDEX=$(jq -r '.data.quizSession.currentIndex // empty' "$BODY")
+    if [ "$STATUS" = "COMPLETED" ] || { [ -n "$INDEX" ] && [ "$INDEX" -ge 1 ]; }; then
+        ok "session survived restart (status=$STATUS, currentIndex=$INDEX)"
+    else
+        bad "session did not survive restart (status=${STATUS:-none}, currentIndex=${INDEX:-none})"
+    fi
+else
+    bad "restart check skipped without session id or token"
 fi
 
 printf '\n'
