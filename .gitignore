@@ -14,7 +14,9 @@ backend/target/
 # C++ / Blade
 backend/question-bank/build/
 backend/question-bank/blade-bin/
+backend/question-bank/blade_out/
 backend/question-bank/.blade/
+backend/question-bank/local-build/
 *.o
 *.a
 *.so
