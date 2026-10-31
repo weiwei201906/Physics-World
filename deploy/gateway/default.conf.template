@@ -1,0 +1,147 @@
+# Gateway configuration for the Physics-World single-page application.
+#
+# The official nginx image renders this file from
+# /etc/nginx/templates/default.conf.template to /etc/nginx/conf.d/default.conf
+# inside the http context. Only the environment variables listed below are
+# substituted; nginx runtime variables such as $uri and $http_authorization
+# survive untouched.
+#
+# Substituted variables:
+#   GATEWAY_PORT        port the gateway listens on
+#   AUTH_UPSTREAM       host:port of auth-service
+#   USER_API_UPSTREAM   host:port of user-api
+#   GATEWAY_STATIC_DIR  directory containing the built frontend
+
+server {
+    listen ${GATEWAY_PORT};
+    server_name _;
+
+    root ${GATEWAY_STATIC_DIR};
+    index index.html;
+
+    client_max_body_size 8m;
+
+    gzip on;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_types text/plain text/css application/json application/javascript
+               application/xml image/svg+xml font/woff2;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+
+    # Liveness probe served by the gateway itself.
+    location = /healthz {
+        access_log off;
+        default_type application/json;
+        return 200 '{"status":"ok","service":"gateway"}';
+    }
+
+    # Optional authentication. Anonymous requests (no Authorization header)
+    # are allowed through without identity headers; requests carrying a
+    # bearer token must pass verification. An invalid or expired token still
+    # yields 401, so optional authentication never hides a bad credential.
+    location = /_auth {
+        internal;
+        if ($http_authorization = "") {
+            return 204;
+        }
+        proxy_pass http://${AUTH_UPSTREAM}/auth/verify;
+        # auth_request subrequests can inherit the main request method; the
+        # verification endpoint is a read-only GET.
+        proxy_method GET;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Public identity endpoints. The gateway never authorizes these itself.
+    location /auth/ {
+        proxy_pass http://${AUTH_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    location = /.well-known/jwks.json {
+        proxy_pass http://${AUTH_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Authenticated user API surface. Identity headers from the client are
+    # dropped and replaced with values produced by auth-service.
+    location /graphql {
+        auth_request /_auth;
+        auth_request_set $identity_user_id $upstream_http_x_user_id;
+        auth_request_set $identity_user_roles $upstream_http_x_user_roles;
+        auth_request_set $identity_user_email $upstream_http_x_user_email;
+
+        proxy_pass http://${USER_API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-User-Id $identity_user_id;
+        proxy_set_header X-User-Roles $identity_user_roles;
+        proxy_set_header X-User-Email $identity_user_email;
+        proxy_read_timeout 60s;
+    }
+
+    location /graphiql {
+        auth_request /_auth;
+        auth_request_set $identity_user_id $upstream_http_x_user_id;
+        auth_request_set $identity_user_roles $upstream_http_x_user_roles;
+        auth_request_set $identity_user_email $upstream_http_x_user_email;
+
+        proxy_pass http://${USER_API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-User-Id $identity_user_id;
+        proxy_set_header X-User-Roles $identity_user_roles;
+        proxy_set_header X-User-Email $identity_user_email;
+    }
+
+    location = /config {
+        auth_request /_auth;
+        auth_request_set $identity_user_id $upstream_http_x_user_id;
+        auth_request_set $identity_user_roles $upstream_http_x_user_roles;
+        auth_request_set $identity_user_email $upstream_http_x_user_email;
+
+        proxy_pass http://${USER_API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-User-Id $identity_user_id;
+        proxy_set_header X-User-Roles $identity_user_roles;
+        proxy_set_header X-User-Email $identity_user_email;
+    }
+
+    # Battle WebSocket service is not deployed yet; fail fast instead of
+    # silently falling through to the SPA.
+    location /ws/ {
+        default_type application/json;
+        return 503 '{"code":"unavailable","message":"battle service is not deployed"}';
+    }
+
+    # Static assets first, then the SPA entry point.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

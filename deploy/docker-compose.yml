@@ -1,0 +1,47 @@
+name: physics-world
+
+services:
+  auth-service:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+      args:
+        SERVICE: auth-service
+    environment:
+      AUTH_BIND_ADDR: 0.0.0.0:8081
+      # Local deployments terminate TLS elsewhere; the browser talks plain HTTP.
+      AUTH_COOKIE_SECURE: "false"
+      RUST_LOG: info
+    expose:
+      - "8081"
+    restart: unless-stopped
+
+  user-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+      args:
+        SERVICE: user-api
+    environment:
+      USER_API_BIND_ADDR: 0.0.0.0:8082
+      RUST_LOG: info
+    expose:
+      - "8082"
+    depends_on:
+      - auth-service
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.gateway
+    environment:
+      GATEWAY_PORT: "8080"
+      AUTH_UPSTREAM: auth-service:8081
+      USER_API_UPSTREAM: user-api:8082
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+      - user-api
+    restart: unless-stopped

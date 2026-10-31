@@ -48,7 +48,11 @@ impl QueryRoot {
     async fn me(&self, ctx: &Context<'_>) -> async_graphql::Result<UserView> {
         let identity = require_identity(ctx)?;
         let state = state(ctx)?;
-        Ok(state.store.profile(identity.user_id, state.clock.now()))
+        Ok(state.store.profile(
+            identity.user_id,
+            identity.email.as_deref(),
+            state.clock.now(),
+        ))
     }
 
     async fn chapters(
@@ -263,6 +267,7 @@ impl MutationRoot {
         let state = state(ctx)?;
         Ok(state.store.update_profile(
             identity.user_id,
+            identity.email.as_deref(),
             input.nickname,
             input.avatar_url,
             state.clock.now(),

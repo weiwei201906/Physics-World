@@ -24,14 +24,14 @@ Physics-World/
 │   ├── question-bank/        # C++20 + Tencent Flare + Blade
 │   ├── gateway/              # Ingress-Nginx + OpenResty Lua
 │   ├── config/               # 动态配置默认值（按 namespace）
-│   ├── migrations/           # PostgreSQL schema / migration
-│   └── deploy/               # Kubernetes manifests
+│   └── migrations/           # PostgreSQL schema / migration
 ├── contracts/
 │   ├── graphql/              # user-api 与 recommendation SDL
 │   └── proto/                # qbank.v1 标准 gRPC 契约
 ├── docs/
 │   ├── architecture.md       # 架构基线（用户提供）
 │   └── git-workflow.md       # 分支、提交、评审与合并规范
+├── deploy/                   # Nginx 网关模板、Dockerfile 与 docker-compose
 ├── scripts/                  # 开发脚本与 Git hooks
 └── tests/e2e/                # Playwright 全链路测试
 ```
@@ -52,11 +52,16 @@ git worktree add .worktrees/question-bank  -b feat/backend-question-bank     dev
 
 ```bash
 cd frontend && npm ci && npm run type-check && npm run lint:check && npm test
-cd backend && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo nextest run
+cd backend && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 cd backend/question-bank && blade test //...
 ```
 
-> 当前 Linux 环境已具备 g++ 15 / clang 21 / cmake 4 / protoc 3.21；Node.js、Rust 默认工具链与 Blade 尚未就绪，对应构建与测试命令待安装后执行。运行 cmake/clang/protoc 前需清除 Trae 注入的 `LD_LIBRARY_PATH` 与 `LD_PRELOAD`。
+网关与前后端联调：
+
+```bash
+cd frontend && npm run build
+NGINX_BIN=/usr/sbin/nginx scripts/smoke_backend.sh
+```
 
 ## 许可证
 

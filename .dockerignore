@@ -1,0 +1,9 @@
+.git
+.worktrees
+.github
+docs
+backend/target
+frontend/node_modules
+frontend/dist
+**/*.log
+**/.DS_Store

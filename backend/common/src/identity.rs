@@ -15,6 +15,7 @@ use crate::error::{AppError, Result};
 
 pub const HEADER_USER_ID: &str = "x-user-id";
 pub const HEADER_USER_ROLES: &str = "x-user-roles";
+pub const HEADER_USER_EMAIL: &str = "x-user-email";
 pub const HEADER_REAL_IP: &str = "x-real-ip";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +23,7 @@ pub struct Identity {
     pub user_id: Uuid,
     pub roles: Vec<String>,
     pub real_ip: Option<IpAddr>,
+    pub email: Option<String>,
 }
 
 impl Identity {
@@ -41,10 +43,17 @@ impl Identity {
             .get(HEADER_REAL_IP)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<IpAddr>().ok());
+        let email = headers
+            .get(HEADER_USER_EMAIL)
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
         Ok(Self {
             user_id,
             roles,
             real_ip,
+            email,
         })
     }
 
@@ -107,12 +116,14 @@ mod tests {
         let identity = Identity::from_headers(&headers(&[
             ("x-user-id", "0e6f8f3e-5f7f-4f2b-9c1f-1d2e3a4b5c6d"),
             ("x-user-roles", "student, admin"),
+            ("x-user-email", "player@example.com"),
             ("x-real-ip", "10.1.2.3"),
         ]))
         .expect("valid identity");
         assert_eq!(identity.roles, vec!["student", "admin"]);
         assert!(identity.is_admin());
         assert!(identity.real_ip.is_some());
+        assert_eq!(identity.email.as_deref(), Some("player@example.com"));
     }
 
     #[test]
@@ -145,6 +156,7 @@ mod tests {
             user_id: Uuid::nil(),
             roles: vec!["ADMIN".to_string()],
             real_ip: None,
+            email: None,
         };
         assert!(identity.is_admin());
     }

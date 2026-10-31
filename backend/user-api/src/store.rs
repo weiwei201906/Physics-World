@@ -339,14 +339,16 @@ impl Store {
         self.lock().answers.get(id).cloned()
     }
 
-    pub fn profile(&self, user_id: Uuid, now: DateTime<Utc>) -> UserView {
+    pub fn profile(&self, user_id: Uuid, email: Option<&str>, now: DateTime<Utc>) -> UserView {
         let mut inner = self.lock();
         inner
             .profiles
             .entry(user_id)
             .or_insert(UserView {
                 id: user_id,
-                email: format!("{user_id}@physics-world.local"),
+                email: email
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| format!("{user_id}@physics-world.local")),
                 nickname: "player".to_string(),
                 avatar_url: None,
                 roles: vec!["student".to_string()],
@@ -358,6 +360,7 @@ impl Store {
     pub fn update_profile(
         &self,
         user_id: Uuid,
+        email: Option<&str>,
         nickname: Option<String>,
         avatar_url: Option<String>,
         now: DateTime<Utc>,
@@ -368,7 +371,9 @@ impl Store {
             .entry(user_id)
             .or_insert(UserView {
                 id: user_id,
-                email: format!("{user_id}@physics-world.local"),
+                email: email
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| format!("{user_id}@physics-world.local")),
                 nickname: "player".to_string(),
                 avatar_url: None,
                 roles: vec!["student".to_string()],
