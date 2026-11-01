@@ -13,7 +13,7 @@
 #   PW_DEV_DIR   runtime directory for logs and pids (default /tmp/pwdev)
 #   PW_ROOT      extracted nginx/redis/postgres packages (default /tmp/pwroot)
 #   PW_HTTP_PORT gateway port (default 8080)
-#   NGINX_BIN    nginx binary (default $PW_ROOT/usr/sbin/nginx)
+#   NGINX_BIN    nginx binary (default: system nginx, else $PW_ROOT/usr/sbin/nginx)
 #   PW_SKIP_BUILD set to 1 to reuse existing cargo artifacts
 
 set -uo pipefail
@@ -23,7 +23,16 @@ PW_DEV_DIR="${PW_DEV_DIR:-/tmp/pwdev}"
 PW_ROOT="${PW_ROOT:-/tmp/pwroot}"
 PW_HTTP_PORT="${PW_HTTP_PORT:-8080}"
 QBANK_PORT="${QBANK_PORT:-15051}"
-NGINX_BIN="${NGINX_BIN:-$PW_ROOT/usr/sbin/nginx}"
+# Prefer an explicit path, then the nginx already installed on this host, and
+# only fall back to the package extracted under PW_ROOT. The extracted copy is
+# the last resort because installing packages system-wide needs root.
+if [ -n "${NGINX_BIN:-}" ]; then
+    :
+elif command -v nginx >/dev/null 2>&1; then
+    NGINX_BIN="$(command -v nginx)"
+else
+    NGINX_BIN="$PW_ROOT/usr/sbin/nginx"
+fi
 DB_SCRIPT="$ROOT/scripts/dev_db.sh"
 
 DATABASE_URL="${DATABASE_URL:-postgres://physics_world:physics_world@127.0.0.1:15432/physics_world}"
@@ -130,7 +139,7 @@ start_grpc_service() {
 }
 
 render_gateway() {
-    [ -x "$NGINX_BIN" ] || fail "nginx not found at $NGINX_BIN (run scripts/dev_db.sh start)"
+    [ -x "$NGINX_BIN" ] || fail "nginx not found at $NGINX_BIN (install nginx, set NGINX_BIN=/path/to/nginx, or extract a package under $PW_ROOT)"
     mkdir -p "$NGINX_DIR/logs" "$NGINX_DIR/tmp/body" "$NGINX_DIR/tmp/proxy" \
         "$NGINX_DIR/tmp/fastcgi" "$NGINX_DIR/tmp/uwsgi" "$NGINX_DIR/tmp/scgi"
     export GATEWAY_PORT="$PW_HTTP_PORT"
