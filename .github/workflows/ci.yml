@@ -62,6 +62,6 @@ jobs:
         run: docker compose -f deploy/docker-compose.yml config > /dev/null
       - name: Render nginx gateway template
         run: |
-          envsubst '${GATEWAY_PORT} ${AUTH_UPSTREAM} ${USER_API_UPSTREAM} ${SSE_UPSTREAM} ${REC_UPSTREAM} ${BATTLE_UPSTREAM} ${GATEWAY_STATIC_DIR}' < deploy/gateway/default.conf.template > /tmp/default.conf
+          envsubst '${GATEWAY_PORT} ${AUTH_UPSTREAM} ${USER_API_UPSTREAM} ${SSE_UPSTREAM} ${REC_UPSTREAM} ${BATTLE_UPSTREAM} ${RUSTFS_UPSTREAM} ${QBANK_MEDIA_BUCKET} ${GATEWAY_STATIC_DIR}' < deploy/gateway/default.conf.template > /tmp/default.conf
           test -s /tmp/default.conf
           ! grep -q '\${' /tmp/default.conf

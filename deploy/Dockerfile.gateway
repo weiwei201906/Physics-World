@@ -14,6 +14,8 @@ ENV GATEWAY_PORT=8080 \
     SSE_UPSTREAM=user-api-sse:8085 \
     REC_UPSTREAM=recommendation-service:8086 \
     BATTLE_UPSTREAM=battle-service:8087 \
+    RUSTFS_UPSTREAM=rustfs:9000 \
+    QBANK_MEDIA_BUCKET=qbank-media \
     GATEWAY_STATIC_DIR=/usr/share/nginx/html
 COPY deploy/gateway/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=frontend /app/dist /usr/share/nginx/html
