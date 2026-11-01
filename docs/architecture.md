@@ -88,7 +88,7 @@
 
 | 服务 | 语言/框架 | 对外协议 | 认证 | 核心职责 | 明确不做 |
 |---|---|---|---|---|---|
-| `gateway` | Nginx（`deploy/gateway/default.conf.template`） | HTTP/WS/SSE | JWT 验签（auth_request） | 入口、路径分流、身份注入 | 业务逻辑、媒体代理、GraphQL 缓存 |
+| `gateway` | Nginx（`deploy/gateway/default.conf.template`） | HTTP/WS/SSE | JWT 验签（auth_request） | 入口、路径分流、身份注入、题目配图代理（RustFS） | 业务逻辑、GraphQL 缓存 |
 | `auth-service` | Rust + Axum + SQLx | REST | — | 注册/登录/刷新/登出/JWKS/撤销 | 每请求验证、profile 存储 |
 | `user-api` | Rust + Axum + async-graphql | GraphQL | 信任 gateway header | 用户、会话、提交、排行榜、admin | 异步重计算、attempts 写入、SSE |
 | `user-api-sse` | Rust + Axum | SSE | 信任 gateway header | `/events` 端点 + 订阅 `notification:broadcast` + `auth:revoked` | GraphQL、写操作 |
@@ -264,7 +264,7 @@ Nginx 模板（未使用 OpenResty Lua，限流与 JWT 黑名单检查仍在计�
 | `/events` | `user-api-sse` | 独立 Ingress：`gateway.ws_sse.proxy_buffering_off` + `gateway.ws_sse.read_timeout_sec` |
 | `/ws/battle` | `battle-service` | 独立 Ingress：`gateway.ws_sse.read_timeout_sec` + `gateway.ws_sse.proxy_buffering_off` |
 | `/config` | `user-api` | `gateway.rate_limit.config_user_per_min` / `gateway.rate_limit.config_ip_per_min` |
-| `/media/*` | 不存在 | 媒体由前端直连 CDN |
+| `/media/*` | `RustFS`（媒体桶） | 只读代理；桶策略仅允许匿名 `GetObject` |
 
 **WS/SSE 场景的 token 提取**：浏览器 WS API / EventSource 不能设自定义 header，token 在 URL query 中传递。`gateway` 从 query 提取 token 验签 → 注入 `X-User-Id` 到 upstream → **访问日志必须脱敏 query 中的 token 参数**（`gateway.log.mask_query_token`）。
 
@@ -840,7 +840,7 @@ JWT 私钥、DB/Redis/Kafka 凭证从 KMS 经 ESO 注入。COS 凭证用 TKE 服
 
 **运行时配置**：挂载前拉 `/config?ns=web` 存入 Pinia，每 `web.config.poll_interval_sec` 轮询。
 
-**媒体**：`<img>` 直接指向 CDN 域名（`web.cdn.media_base_url`）。
+**媒体**：`<img>` 指向 `/media/*`，由 `gateway` 反代 RustFS 媒体桶（`question-bank` 导入题库时把配图发布到对象存储）。
 
 **SSE**：EventSource 连 `/events`（query 带 token）。断线后重连并主动拉最新状态。收到服务端撤销事件时关闭连接并跳登录。
 

@@ -14,12 +14,14 @@ pub struct QbankConfig {
     pub redis_url: String,
     pub bundle_path: Option<PathBuf>,
     pub media_base: String,
+    pub media_dir: Option<PathBuf>,
+    pub media_bucket: String,
     pub cache_ttl_sec: u64,
     pub rustfs: Option<RustfsSettings>,
 }
 
-/// Connection details for the RustFS S3-compatible object that holds the
-/// question bundle.
+/// Connection details for the RustFS S3-compatible object storage that holds
+/// the question bundle and its media.
 #[derive(Debug, Clone)]
 pub struct RustfsSettings {
     pub endpoint: String,
@@ -45,11 +47,23 @@ impl QbankConfig {
             redis_url: env_or("REDIS_URL", defaults::REDIS_URL),
             bundle_path,
             media_base: env_or("QBANK_MEDIA_BASE", defaults::QBANK_MEDIA_BASE),
+            media_dir: media_dir_from_env(),
+            media_bucket: env_or("QBANK_RUSTFS_MEDIA_BUCKET", "qbank-media"),
             cache_ttl_sec: std::env::var("QBANK_CACHE_TTL_SEC")
                 .ok()
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(defaults::QBANK_CACHE_TTL_SEC),
             rustfs: rustfs_from_env(),
+        }
+    }
+}
+
+fn media_dir_from_env() -> Option<PathBuf> {
+    match std::env::var("QBANK_MEDIA_DIR") {
+        Ok(value) if !value.trim().is_empty() => Some(PathBuf::from(value)),
+        _ => {
+            let fallback = PathBuf::from("deploy/qbank/media");
+            fallback.exists().then_some(fallback)
         }
     }
 }

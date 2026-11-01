@@ -44,6 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(None) => tracing::warn!("no question bundle configured; serving existing rows"),
         Err(error) => tracing::warn!(error = %error, "question bundle import skipped"),
     }
+    publish_media(&config).await;
 
     let bind_addr = config.bind_addr.parse()?;
     tracing::info!(%bind_addr, "question-bank listening");
@@ -68,5 +69,83 @@ async fn import_bundle(
     match &config.bundle_path {
         Some(path) => Ok(Some(bundle::load(path)?)),
         None => Ok(None),
+    }
+}
+
+/// Publishes locally bundled question images to RustFS so the gateway streams
+/// `/media/*` from object storage instead of the frontend build.
+///
+/// Failures are logged, never fatal: a stale media set still lets the rest of
+/// the question bank import and serve questions.
+async fn publish_media(config: &QbankConfig) {
+    let (Some(settings), Some(dir)) = (&config.rustfs, &config.media_dir) else {
+        return;
+    };
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            tracing::warn!(error = %error, dir = %dir.display(), "question media directory unreadable");
+            return;
+        }
+    };
+    if let Err(error) =
+        rustfs::ensure_public_bucket(settings, &config.media_bucket, Duration::from_secs(10)).await
+    {
+        tracing::warn!(error = %error, bucket = %config.media_bucket, "rustfs media bucket setup failed");
+        return;
+    }
+
+    let mut uploaded = 0usize;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(file) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let bytes = match tokio::fs::read(&path).await {
+            Ok(bytes) => bytes::Bytes::from(bytes),
+            Err(error) => {
+                tracing::warn!(error = %error, file, "question media file unreadable");
+                continue;
+            }
+        };
+        let key = format!("media/{file}");
+        match rustfs::put_object(
+            settings,
+            &config.media_bucket,
+            &key,
+            bytes,
+            media_content_type(file),
+            Duration::from_secs(10),
+        )
+        .await
+        {
+            Ok(()) => uploaded += 1,
+            Err(error) => tracing::warn!(error = %error, file, "question media upload failed"),
+        }
+    }
+    tracing::info!(
+        uploaded,
+        bucket = %config.media_bucket,
+        "question media published"
+    );
+}
+
+fn media_content_type(file: &str) -> &'static str {
+    match file
+        .rsplit('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => "application/octet-stream",
     }
 }

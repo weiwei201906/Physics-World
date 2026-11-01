@@ -127,6 +127,19 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Question media lives in object storage, not in the frontend image. The
+  # gateway proxies /media/* to RustFS; the bucket grants anonymous GET.
+  rustfs:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: physics_world
+      RUSTFS_SECRET_KEY: physics_world
+    volumes:
+      - rustfsdata:/data
+    expose:
+      - "9000"
+    restart: unless-stopped
+
   gateway:
     build:
       context: ..
@@ -138,6 +151,8 @@ services:
       SSE_UPSTREAM: user-api-sse:8085
       REC_UPSTREAM: recommendation-service:8086
       BATTLE_UPSTREAM: battle-service:8087
+      RUSTFS_UPSTREAM: rustfs:9000
+      QBANK_MEDIA_BUCKET: qbank-media
     ports:
       - "8080:8080"
     depends_on:
@@ -146,8 +161,10 @@ services:
       - user-api-sse
       - recommendation-service
       - battle-service
+      - rustfs
     restart: unless-stopped
 
 volumes:
   pgdata:
   redisdata:
+  rustfsdata:

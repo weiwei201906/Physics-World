@@ -13,6 +13,8 @@
 #   SSE_UPSTREAM        host:port of user-api-sse
 #   REC_UPSTREAM        host:port of recommendation-service
 #   BATTLE_UPSTREAM     host:port of battle-service
+#   RUSTFS_UPSTREAM     host:port of RustFS (S3-compatible object storage)
+#   QBANK_MEDIA_BUCKET  bucket holding question media objects
 #   GATEWAY_STATIC_DIR  directory containing the built frontend
 
 server {
@@ -216,6 +218,21 @@ server {
     location /ws/ {
         default_type application/json;
         return 503 '{"code":"unavailable","message":"unknown websocket endpoint"}';
+    }
+
+    # Question media is object storage content, not a frontend asset. The
+    # browser asks the gateway, the gateway reads RustFS, and the bucket only
+    # grants anonymous GET on the media prefix.
+    location /media/ {
+        proxy_pass http://${RUSTFS_UPSTREAM}/${QBANK_MEDIA_BUCKET}/media/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_hide_header x-amz-request-id;
+        proxy_hide_header x-amz-id-2;
+        proxy_hide_header x-amz-version-id;
+        expires 1y;
     }
 
     # Hashed assets are content-addressed: safe to cache for a year.
