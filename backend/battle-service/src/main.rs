@@ -35,7 +35,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // browsers cannot set handshake headers; auth-service verifies it.
     let tokens: Arc<dyn TokenValidator> = Arc::new(HttpTokenValidator::new(&auth_base_url()));
     let vectors = vector_source(pool.clone()).await;
-    let mut state = AppState::new(store, settings.clone(), clock, tokens).with_vector_source(vectors);
+    let mut state =
+        AppState::new(store, settings.clone(), clock, tokens).with_vector_source(vectors);
     if let Some(pool) = pool {
         state = state.with_history_pool(pool);
     }
@@ -62,7 +63,9 @@ fn auth_base_url() -> String {
 // database-backed components (vector source, catalog, history endpoint and the
 // reconciler) share it to avoid piling up separate connection pools.
 async fn shared_pool() -> Option<PgPool> {
-    let url = std::env::var("DATABASE_URL").ok().filter(|value| !value.is_empty())?;
+    let url = std::env::var("DATABASE_URL")
+        .ok()
+        .filter(|value| !value.is_empty())?;
     match sqlx::postgres::PgPoolOptions::new()
         .max_connections(8)
         .connect(&url)
