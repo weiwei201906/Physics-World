@@ -51,7 +51,11 @@ pub trait BattleStore: Send + Sync {
         mode: Option<String>,
         vector: PlayerVector,
     ) -> Result<EnqueueResult>;
-    async fn join(&self, player: Uuid, room_id: Uuid) -> Result<(RoomView, Option<QuestionView>)>;
+    async fn join(
+        &self,
+        player: Uuid,
+        room_id: Uuid,
+    ) -> Result<(RoomView, Option<QuestionView>, Option<BattleResult>)>;
     async fn answer(
         &self,
         player: Uuid,
@@ -282,7 +286,11 @@ impl BattleStore for InMemoryBattleStore {
         })
     }
 
-    async fn join(&self, player: Uuid, room_id: Uuid) -> Result<(RoomView, Option<QuestionView>)> {
+    async fn join(
+        &self,
+        player: Uuid,
+        room_id: Uuid,
+    ) -> Result<(RoomView, Option<QuestionView>, Option<BattleResult>)> {
         self.engine().join(player, room_id)
     }
 

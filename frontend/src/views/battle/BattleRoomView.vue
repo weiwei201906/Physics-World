@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useProfileStore } from '@/stores/profile'
 import { useBattleWebSocket } from '@/composables/useBattleWebSocket'
 import { useBattleRoomState } from '@/composables/useBattleRoomState'
 import { joinRoomFrame } from '@/api/battle'
@@ -10,6 +11,7 @@ import { t } from '@/i18n'
 const props = defineProps<{ roomId: string }>()
 const router = useRouter()
 const auth = useAuthStore()
+const profile = useProfileStore()
 
 const { connected, connect, send, onMessage, disconnect } = useBattleWebSocket(
   () => auth.accessToken
@@ -55,6 +57,12 @@ watch(connected, (isConnected) => {
   if (isConnected) {
     send(joinRoomFrame(props.roomId))
   }
+})
+
+// A finished battle changes mastery, so pull a fresh summary for the profile
+// and home pages instead of leaving them on the pre-battle numbers.
+watch(phase, (value) => {
+  if (value === 'finished') void profile.loadSummary()
 })
 
 onMounted(() => {

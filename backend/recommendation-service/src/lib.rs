@@ -1,6 +1,7 @@
 //! Recommendation service: profile vectors, read-time merge, flusher and the
 //! `/rec/graphql` API.
 
+pub mod catalog;
 pub mod engine;
 pub mod graphql;
 pub mod model;
@@ -12,6 +13,7 @@ use std::sync::Arc;
 
 use common::clock::Clock;
 
+pub use catalog::PgCatalog;
 pub use engine::RecommendationEngine;
 pub use graphql::{build_schema, RecSchema};
 pub use model::{Chapter, ChapterVector, Recommendation};
@@ -26,6 +28,7 @@ pub struct AppState {
     pub engine: Arc<RecommendationEngine>,
     pub settings: Arc<Settings>,
     pub clock: Arc<dyn Clock>,
+    pub catalog: Option<Arc<PgCatalog>>,
 }
 
 impl AppState {
@@ -34,12 +37,14 @@ impl AppState {
         engine: Arc<RecommendationEngine>,
         settings: Arc<Settings>,
         clock: Arc<dyn Clock>,
+        catalog: Option<Arc<PgCatalog>>,
     ) -> Self {
         Self {
             source,
             engine,
             settings,
             clock,
+            catalog,
         }
     }
 }
@@ -65,7 +70,13 @@ mod tests {
             settings.min_score,
         ));
         let source = Arc::new(InMemoryProfileSource::new(dims));
-        AppState::new(source, engine, Arc::new(settings), Arc::new(SystemClock))
+        AppState::new(
+            source,
+            engine,
+            Arc::new(settings),
+            Arc::new(SystemClock),
+            None,
+        )
     }
 
     fn graphql_request(user_id: Option<&str>, query: &str) -> Request<Body> {

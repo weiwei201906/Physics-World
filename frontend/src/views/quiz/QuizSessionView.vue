@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { t } from '@/i18n'
 import { useSessionStore } from '@/stores/session'
+import { useProfileStore } from '@/stores/profile'
 import { useConfigStore } from '@/stores/config'
 import { useToast } from '@/composables/useToast'
 import { computeRemainingSeconds } from '@/composables/useExamTimer'
@@ -12,6 +13,7 @@ import ErrorState from '@/components/ErrorState.vue'
 const props = defineProps<{ sessionId: string }>()
 const router = useRouter()
 const session = useSessionStore()
+const profile = useProfileStore()
 const config = useConfigStore()
 const { showToast } = useToast()
 
@@ -117,6 +119,9 @@ async function next(): Promise<void> {
   stopTimer()
   if (session.isLastQuestion) {
     session.finishSession()
+    // Refresh mastery right away so returning home/profile shows the new data
+    // without needing a manual page reload.
+    void profile.loadSummary()
     return
   }
   await session.nextQuestion()

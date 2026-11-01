@@ -508,11 +508,15 @@ impl BattleEngine {
     }
 
     /// Re-attaches a player that already owns a seat in `room_id`.
+    ///
+    /// A settled room also yields its result so a client that reconnects (or
+    /// reloads the page) can render the final report instead of hanging on the
+    /// last question.
     pub fn join(
         &mut self,
         player: Uuid,
         room_id: Uuid,
-    ) -> Result<(RoomView, Option<QuestionView>)> {
+    ) -> Result<(RoomView, Option<QuestionView>, Option<BattleResult>)> {
         let now = self.clock.now();
         let room = self
             .rooms
@@ -530,7 +534,12 @@ impl BattleEngine {
         } else {
             None
         };
-        Ok((view, question))
+        let result = if room.phase == RoomPhase::Finished {
+            Some(room.result())
+        } else {
+            None
+        };
+        Ok((view, question, result))
     }
 
     pub fn answer(
@@ -1262,7 +1271,7 @@ mod tests {
         let second = Uuid::new_v4();
         let room_id = matched_room(&mut engine, first, second);
         engine.leave(first).expect("leave");
-        let (view, question) = engine.join(first, room_id).expect("rejoin");
+        let (view, question, _) = engine.join(first, room_id).expect("rejoin");
         assert_eq!(view.phase, RoomPhase::Playing);
         assert!(view
             .players

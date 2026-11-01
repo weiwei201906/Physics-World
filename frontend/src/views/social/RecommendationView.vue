@@ -1,22 +1,37 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { t } from '@/i18n'
 import { useSessionStore } from '@/stores/session'
 import { fetchRecommendedQuestions } from '@/api/recommendation'
+import { fetchChapters } from '@/api/user'
 import type { Question } from '@/types'
 
 const session = useSessionStore()
 const router = useRouter()
 const questions = ref<Question[]>([])
+const chapterNames = ref<Record<string, string>>({})
 const loading = ref(true)
+const failed = ref(false)
 
 onMounted(async () => {
   try {
-    questions.value = await fetchRecommendedQuestions()
+    const [recommended, chapters] = await Promise.all([
+      fetchRecommendedQuestions(),
+      fetchChapters().catch(() => [])
+    ])
+    questions.value = recommended
+    chapterNames.value = Object.fromEntries(chapters.map((chapter) => [chapter.id, chapter.name]))
+  } catch {
+    failed.value = true
   } finally {
     loading.value = false
   }
 })
+
+function chapterName(id: string): string {
+  return chapterNames.value[id] ?? t('recommendation.chapterLabel', { id })
+}
 
 async function startFromQuestion(question: Question): Promise<void> {
   const id = await session.startSession('PRACTICE', question.chapterId)
@@ -27,18 +42,21 @@ async function startFromQuestion(question: Question): Promise<void> {
 <template>
   <div class="recommendation">
     <header class="page-head">
-      <p class="eyebrow">Recommended</p>
-      <h1>Questions for you</h1>
-      <p class="desc">Selected from chapters where you need the most practice.</p>
+      <p class="eyebrow">{{ t('nav.recommendation') }}</p>
+      <h1>{{ t('recommendation.title') }}</h1>
+      <p class="desc">{{ t('recommendation.desc') }}</p>
     </header>
 
-    <div v-if="loading" class="loading">Loading recommendations...</div>
+    <div v-if="loading" class="loading">{{ t('recommendation.loading') }}</div>
+
+    <div v-else-if="failed" class="empty">{{ t('recommendation.error') }}</div>
 
     <div v-else-if="questions.length === 0" class="empty">
-      No recommendations yet. Answer a few questions to get started.
+      {{ t('recommendation.empty') }}
     </div>
 
     <div v-else class="question-list">
+      <h2 class="list-title">{{ t('recommendation.listTitle') }}</h2>
       <button
         v-for="(q, index) in questions"
         :key="q.id"
@@ -47,7 +65,7 @@ async function startFromQuestion(question: Question): Promise<void> {
       >
         <span class="question-index">{{ index + 1 }}</span>
         <span class="question-stem">{{ q.content.stem }}</span>
-        <span class="question-chapter">Ch. {{ q.chapterId }}</span>
+        <span class="question-chapter">{{ chapterName(q.chapterId) }}</span>
       </button>
     </div>
   </div>
@@ -85,6 +103,13 @@ async function startFromQuestion(question: Question): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.list-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
 }
 
 .question-item {
@@ -132,5 +157,8 @@ async function startFromQuestion(question: Question): Promise<void> {
   font-size: var(--text-xs);
   color: var(--color-text-faint);
   white-space: nowrap;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

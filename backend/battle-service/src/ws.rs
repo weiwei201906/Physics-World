@@ -24,7 +24,9 @@ use uuid::Uuid;
 use crate::engine::RoomPhase;
 use crate::protocol::{ClientMessage, ServerMessage};
 use crate::settings::Settings;
-use crate::store::{question_message, room_state_message, BattleStore, EnqueueResult};
+use crate::store::{
+    game_over_message, question_message, room_state_message, BattleStore, EnqueueResult,
+};
 use crate::vector::{VectorSource, ZeroVectorSource};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(500);
@@ -455,7 +457,7 @@ async fn handle_client_message(
                 }
             };
             match state.store.join(user_id, requested_room).await {
-                Ok((view, question)) => {
+                Ok((view, question, result)) => {
                     *room_id = Some(requested_room);
                     *receiver = Some(room_receiver);
                     if !send_message(socket, &room_state_message(&view)).await {
@@ -463,6 +465,13 @@ async fn handle_client_message(
                     }
                     if let Some(question) = question {
                         if !send_message(socket, &question_message(&question)).await {
+                            return false;
+                        }
+                    }
+                    // A settled room sends its report on rejoin so a client
+                    // that reloaded the page is not stranded on a stale question.
+                    if let Some(result) = result {
+                        if !send_message(socket, &game_over_message(&result)).await {
                             return false;
                         }
                     }

@@ -10,6 +10,7 @@ use chrono::{DateTime, Utc};
 use common::error::Result as AppResult;
 use uuid::Uuid;
 
+use crate::catalog::CatalogQuestion;
 use crate::model::ChapterVector;
 use crate::AppState;
 
@@ -215,10 +216,23 @@ impl QueryRoot {
         let per_chapter = if chapter_id.is_some() { count } else { 1 };
         let mut questions = Vec::new();
         for (chapter_id, chapter_name) in targets {
-            for index in 1..=per_chapter {
-                if questions.len() >= count {
-                    break;
+            if questions.len() >= count {
+                break;
+            }
+            let wanted = per_chapter.min(count - questions.len());
+            if let Some(catalog) = state.catalog.as_ref() {
+                match catalog.questions(&chapter_id, wanted as i64).await {
+                    Ok(rows) if !rows.is_empty() => {
+                        questions.extend(rows.into_iter().map(question_from_row));
+                        continue;
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!(%error, %chapter_id, "question catalog read failed");
+                    }
                 }
+            }
+            for index in 1..=wanted {
                 questions.push(question_stub(&chapter_id, &chapter_name, index));
             }
         }
@@ -300,8 +314,8 @@ impl MutationRoot {
     }
 }
 
-// The question payload is a deterministic placeholder until the QBank client
-// is wired in; it keeps the contract shape stable for the frontend.
+// Deterministic placeholder used only when the catalog is unavailable; it keeps
+// the contract shape stable for the frontend.
 fn question_stub(chapter_id: &str, chapter_name: &str, index: usize) -> QuestionView {
     let options = ["A", "B", "C", "D"]
         .into_iter()
@@ -319,6 +333,29 @@ fn question_stub(chapter_id: &str, chapter_name: &str, index: usize) -> Question
             stem: format!("Review question {index} for {chapter_name}"),
             image_url: None,
             explanation: Some("Unused placeholder content.".to_string()),
+            options,
+        },
+    }
+}
+
+fn question_from_row(row: CatalogQuestion) -> QuestionView {
+    let options = row
+        .parsed_options()
+        .into_iter()
+        .map(|option| OptionView {
+            id: ID::from(option.id),
+            label: option.label,
+            text: option.text,
+        })
+        .collect();
+    QuestionView {
+        id: ID::from(row.id),
+        chapter_id: row.chapter_id,
+        difficulty: row.difficulty,
+        content: QuestionContentView {
+            stem: row.stem,
+            image_url: row.image_url.filter(|value| !value.is_empty()),
+            explanation: row.explanation.filter(|value| !value.is_empty()),
             options,
         },
     }

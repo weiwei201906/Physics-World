@@ -60,21 +60,21 @@ function formatTime(iso: string): string {
     <section class="summary-stats">
       <div class="stat">
         <span class="stat-value">{{ profile.summary?.totalAttempts ?? 0 }}</span>
-        <span class="stat-label">Questions answered</span>
+        <span class="stat-label">{{ t('profile.attempts') }}</span>
       </div>
       <div class="stat">
         <span class="stat-value">
           {{ profile.summary ? Math.round(profile.summary.correctRate * 100) : 0 }}%
         </span>
-        <span class="stat-label">Correct rate</span>
+        <span class="stat-label">{{ t('profile.correctRate') }}</span>
       </div>
     </section>
 
     <section class="strengths">
-      <h2>Chapter strengths</h2>
-      <div v-if="profile.loading" class="loading">Loading...</div>
+      <h2>{{ t('profile.strengthsTitle') }}</h2>
+      <div v-if="profile.loading" class="loading">{{ t('profile.loading') }}</div>
       <div v-else-if="!profile.summary?.chapterStrengths.length" class="empty">
-        No data yet. Answer some questions to see your strengths.
+        {{ t('profile.noStrengths') }}
       </div>
       <div v-else class="strength-list">
         <div v-for="s in profile.summary.chapterStrengths" :key="s.chapterId" class="strength-item">
