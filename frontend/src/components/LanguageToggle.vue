@@ -46,8 +46,8 @@ function cycle(): void {
 }
 
 .lang-toggle:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent-deep);
+  border-color: var(--color-text);
+  color: var(--color-text);
 }
 
 .lang-toggle__label {

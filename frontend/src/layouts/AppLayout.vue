@@ -131,9 +131,9 @@ function handleLogout(): void {
 
 .masthead-inner {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-5);
+  gap: var(--space-4);
   min-height: var(--masthead-height);
   padding-top: var(--space-3);
   padding-bottom: var(--space-3);
@@ -178,13 +178,18 @@ function handleLogout(): void {
   font-size: var(--text-xs);
   letter-spacing: 0.06em;
   color: var(--color-text-muted);
-  white-space: nowrap;
+  max-width: 18ch;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .nav {
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: var(--space-1);
+  min-width: 0;
 }
 
 .nav-link {
@@ -193,7 +198,7 @@ function handleLogout(): void {
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   text-decoration: none;
-  white-space: nowrap;
+  line-height: 1.3;
 }
 
 .nav-link:hover {
@@ -293,12 +298,31 @@ function handleLogout(): void {
 
 .colophon-inner {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: var(--space-4);
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   letter-spacing: 0.06em;
   color: var(--color-text-muted);
+}
+
+.colophon-inner > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* English mode hides the redundant "Particle" word next to "PARTICLE" to
+   keep the brand compact. */
+[data-locale='en-US'] .brand-zh {
+  display: none;
+}
+
+[data-locale='en-US'] .nav-link {
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
 }
 
 @media (max-width: 1180px) {
@@ -307,7 +331,7 @@ function handleLogout(): void {
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1080px) {
   .masthead-inner {
     grid-template-columns: 1fr auto;
     grid-template-areas:
@@ -326,8 +350,8 @@ function handleLogout(): void {
 
   .nav {
     grid-area: nav;
-    overflow-x: auto;
-    padding-bottom: var(--space-1);
+    justify-content: flex-start;
+    padding-top: var(--space-2);
     border-top: 1px solid var(--color-rule);
   }
 

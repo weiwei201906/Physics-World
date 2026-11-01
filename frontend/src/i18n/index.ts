@@ -26,9 +26,23 @@ function detectInitialLocale(): Locale {
 
 export const locale = ref<Locale>(detectInitialLocale())
 
+/**
+ * Keep the <html> element in sync with the active locale so stylesheets can
+ * apply locale-specific rules (e.g. hide the redundant Chinese brand word in
+ * English, adjust spacing for longer Latin labels).
+ */
+function applyLocaleAttribute(next: Locale): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.setAttribute('data-locale', next)
+  document.documentElement.setAttribute('lang', next)
+}
+
+applyLocaleAttribute(locale.value)
+
 export function setLocale(next: Locale): void {
   if (next === locale.value) return
   locale.value = next
+  applyLocaleAttribute(next)
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(LOCALE_STORAGE_KEY, next)
   }
