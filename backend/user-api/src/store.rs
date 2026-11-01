@@ -436,6 +436,7 @@ impl MemoryStore {
         user_id: Uuid,
         mode: QuizMode,
         chapter_id: Option<String>,
+        selected_ids: Option<Vec<String>>,
         limit: u32,
         now: DateTime<Utc>,
     ) -> Result<QuizSession> {
@@ -456,10 +457,17 @@ impl MemoryStore {
             .order
             .iter()
             .filter(|id| match inner.questions.get(*id) {
-                Some(question) => chapter_id
-                    .as_deref()
-                    .map(|chapter| question.chapter_id == chapter)
-                    .unwrap_or(true),
+                Some(question) => {
+                    let in_chapter = chapter_id
+                        .as_deref()
+                        .map(|chapter| question.chapter_id == chapter)
+                        .unwrap_or(true);
+                    let picked = selected_ids
+                        .as_deref()
+                        .map(|ids| ids.iter().any(|selected| selected == id.as_str()))
+                        .unwrap_or(true);
+                    in_chapter && picked
+                }
                 None => false,
             })
             .take(limit.max(1) as usize)
@@ -1147,6 +1155,7 @@ pub trait DomainStore: Send + Sync {
         user_id: Uuid,
         mode: QuizMode,
         chapter_id: Option<String>,
+        question_ids: Option<Vec<String>>,
         limit: u32,
         now: DateTime<Utc>,
     ) -> Result<QuizSession>;
@@ -1256,10 +1265,11 @@ impl DomainStore for MemoryStore {
         user_id: Uuid,
         mode: QuizMode,
         chapter_id: Option<String>,
+        question_ids: Option<Vec<String>>,
         limit: u32,
         now: DateTime<Utc>,
     ) -> Result<QuizSession> {
-        self.start_session(user_id, mode, chapter_id, limit, now)
+        self.start_session(user_id, mode, chapter_id, question_ids, limit, now)
     }
 
     async fn session(&self, id: Uuid, user_id: Uuid) -> Result<Option<QuizSession>> {

@@ -34,7 +34,8 @@ function chapterName(id: string): string {
 }
 
 async function startFromQuestion(question: Question): Promise<void> {
-  const id = await session.startSession('PRACTICE', question.chapterId)
+  // Practice just this recommended question instead of the whole chapter.
+  const id = await session.startSession('PRACTICE', question.chapterId, [question.id])
   await router.push({ name: 'quiz-session', params: { sessionId: id } })
 }
 </script>

@@ -233,6 +233,7 @@ impl MutationRoot {
         ctx: &Context<'_>,
         mode: QuizMode,
         chapter_id: Option<ID>,
+        question_ids: Option<Vec<ID>>,
     ) -> async_graphql::Result<QuizSession> {
         let identity = require_identity(ctx)?;
         let state = state(ctx)?;
@@ -242,6 +243,7 @@ impl MutationRoot {
                 identity.user_id,
                 mode,
                 chapter_id.map(|id| id.to_string()),
+                question_ids.map(|ids| ids.into_iter().map(|id| id.to_string()).collect()),
                 state.settings.session_max_questions,
                 state.clock.now(),
             )

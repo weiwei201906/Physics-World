@@ -195,7 +195,7 @@ type Query {
 }
 
 type Mutation {
-  startQuizSession(mode: QuizMode!, chapterId: ID): QuizSession!
+  startQuizSession(mode: QuizMode!, chapterId: ID, questionIds: [ID!]): QuizSession!
   submitAttempt(input: SubmitAttemptInput!): SubmitAttemptPayload!
   updateProfile(input: UpdateProfileInput!): User!
   adminUpsertConfig(namespace: String!, key: String!, value: String!): ConfigMutationPayload!

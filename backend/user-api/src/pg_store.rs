@@ -409,6 +409,7 @@ impl DomainStore for PgStore {
         user_id: Uuid,
         mode: QuizMode,
         chapter_id: Option<String>,
+        question_ids: Option<Vec<String>>,
         limit: u32,
         now: DateTime<Utc>,
     ) -> Result<QuizSession> {
@@ -426,33 +427,47 @@ impl DomainStore for PgStore {
                 return Err(AppError::not_found("chapter not found"));
             }
         }
-        let question_ids: Vec<String> = match chapter_id.as_deref() {
-            Some(chapter) => sqlx::query_scalar(
+        let question_ids: Vec<String> = match question_ids {
+            // Starting from a recommendation: practise exactly the picked
+            // questions instead of the whole chapter.
+            Some(selected) => sqlx::query_scalar(
                 "SELECT q.id FROM question.questions q \
-                 JOIN question.chapters c ON c.id = q.chapter_id \
-                 WHERE q.deleted_at IS NULL AND q.chapter_id = $2 \
-                 ORDER BY q.difficulty, q.id LIMIT $1",
+                 WHERE q.deleted_at IS NULL AND q.id = ANY($1) \
+                 ORDER BY q.difficulty, q.id LIMIT $2",
             )
+            .bind(selected)
             .bind(i64::from(limit.max(1)))
-            .bind(chapter)
             .fetch_all(&self.pool)
             .await
-            .map_err(|error| db_error("select session questions", error))?,
-            // PRACTICE mode: surface the dimensions with the highest error
-            // weight first, then shuffle within the same weight.
-            None => sqlx::query_scalar(
-                "SELECT q.id FROM question.questions q \
-                 LEFT JOIN app.user_vectors uv ON uv.user_id = $2 \
-                 WHERE q.deleted_at IS NULL \
-                 ORDER BY coalesce( \
-                   uv.weights[array_position(uv.dims, q.chapter_id || ':' || q.difficulty)], 0 \
-                 ) DESC, random() LIMIT $1",
-            )
-            .bind(i64::from(limit.max(1)))
-            .bind(user_id)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|error| db_error("select practice questions", error))?,
+            .map_err(|error| db_error("select picked questions", error))?,
+            None => match chapter_id.as_deref() {
+                Some(chapter) => sqlx::query_scalar(
+                    "SELECT q.id FROM question.questions q \
+                     JOIN question.chapters c ON c.id = q.chapter_id \
+                     WHERE q.deleted_at IS NULL AND q.chapter_id = $2 \
+                     ORDER BY q.difficulty, q.id LIMIT $1",
+                )
+                .bind(i64::from(limit.max(1)))
+                .bind(chapter)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|error| db_error("select session questions", error))?,
+                // PRACTICE mode: surface the dimensions with the highest error
+                // weight first, then shuffle within the same weight.
+                None => sqlx::query_scalar(
+                    "SELECT q.id FROM question.questions q \
+                     LEFT JOIN app.user_vectors uv ON uv.user_id = $2 \
+                     WHERE q.deleted_at IS NULL \
+                     ORDER BY coalesce( \
+                       uv.weights[array_position(uv.dims, q.chapter_id || ':' || q.difficulty)], 0 \
+                     ) DESC, random() LIMIT $1",
+                )
+                .bind(i64::from(limit.max(1)))
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|error| db_error("select practice questions", error))?,
+            },
         };
         if question_ids.is_empty() {
             return Err(AppError::not_found("no questions available"));

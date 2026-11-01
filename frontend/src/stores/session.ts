@@ -73,11 +73,15 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
-  async function startSession(mode: QuizMode, chapterId?: string): Promise<string> {
+  async function startSession(
+    mode: QuizMode,
+    chapterId?: string,
+    questionIds?: string[]
+  ): Promise<string> {
     loading.value = true
     resetSessionState()
     try {
-      const session = await apiStartSession(mode, chapterId)
+      const session = await apiStartSession(mode, chapterId, questionIds)
       currentSession.value = session
       isCompleted.value = session.status === 'COMPLETED'
       await loadQuestion(session.currentIndex)

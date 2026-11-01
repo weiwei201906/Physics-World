@@ -34,8 +34,8 @@ const CHAPTERS_QUERY = `
 `
 
 const START_SESSION_MUTATION = `
-  mutation StartQuizSession($mode: QuizMode!, $chapterId: ID) {
-    startQuizSession(mode: $mode, chapterId: $chapterId) {
+  mutation StartQuizSession($mode: QuizMode!, $chapterId: ID, $questionIds: [ID!]) {
+    startQuizSession(mode: $mode, chapterId: $chapterId, questionIds: $questionIds) {
       ${SESSION_FIELDS}
     }
   }
@@ -99,11 +99,12 @@ export async function fetchChapters(signal?: AbortSignal): Promise<Chapter[]> {
 export async function startQuizSession(
   mode: QuizMode,
   chapterId?: string,
+  questionIds?: string[],
   signal?: AbortSignal
 ): Promise<QuizSession> {
   return gqlRequest<{ startQuizSession: QuizSession }>(
     START_SESSION_MUTATION,
-    { mode, chapterId: chapterId ?? null },
+    { mode, chapterId: chapterId ?? null, questionIds: questionIds ?? null },
     signal
   ).then((d) => d.startQuizSession)
 }
