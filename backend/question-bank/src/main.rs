@@ -15,7 +15,7 @@ use qbank_client::qbank::question_bank_server::QuestionBankServer;
 use redis::aio::ConnectionManager;
 use sqlx::postgres::PgPoolOptions;
 
-use crate::config::QbankConfig;
+use crate::config::{QbankConfig, RustfsSettings};
 use crate::service::QuestionBankService;
 use crate::store::QuestionStore;
 
@@ -32,19 +32,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let redis = ConnectionManager::new(redis_client).await?;
     let store = Arc::new(QuestionStore::new(pool, redis, config.cache_ttl_sec));
 
+    seed_storage(&config).await;
     match import_bundle(&config).await {
         Ok(Some(bundle)) => {
             let count = store.import(&bundle, &config.media_base).await?;
             tracing::info!(
                 questions = count,
                 chapters = bundle.chapters.len(),
-                "question bundle imported"
+                "question bundle synced to postgres"
             );
         }
-        Ok(None) => tracing::warn!("no question bundle configured; serving existing rows"),
-        Err(error) => tracing::warn!(error = %error, "question bundle import skipped"),
+        Ok(None) => tracing::warn!("no question bundle available; serving existing rows"),
+        Err(error) => tracing::warn!(error = %error, "question bundle sync skipped"),
     }
-    publish_media(&config).await;
 
     let bind_addr = config.bind_addr.parse()?;
     tracing::info!(%bind_addr, "question-bank listening");
@@ -55,21 +55,66 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Prefers RustFS; falls back to the local bundle when object storage is
-/// unreachable or not configured.
+/// Seeds RustFS with the bundle and images shipped alongside the service.
+///
+/// Object storage is the source of truth; the local copies only bootstrap it.
+async fn seed_storage(config: &QbankConfig) {
+    let Some(settings) = &config.rustfs else {
+        tracing::warn!("no rustfs endpoint configured; cannot seed question bundle");
+        return;
+    };
+    publish_bundle(settings, config).await;
+    publish_media(settings, config).await;
+}
+
+/// Uploads the shipped JSON bundle so RustFS always holds the canonical
+/// document that PostgreSQL is then synced from.
+async fn publish_bundle(settings: &RustfsSettings, config: &QbankConfig) {
+    let Some(path) = &config.bundle_path else {
+        return;
+    };
+    let bytes = match tokio::fs::read(path).await {
+        Ok(bytes) => bytes::Bytes::from(bytes),
+        Err(error) => {
+            tracing::warn!(error = %error, path = %path.display(), "question bundle unreadable");
+            return;
+        }
+    };
+    if let Err(error) =
+        rustfs::ensure_bucket(settings, &settings.bucket, Duration::from_secs(10)).await
+    {
+        tracing::warn!(error = %error, bucket = %settings.bucket, "rustfs bundle bucket setup failed");
+        return;
+    }
+    match rustfs::put_object(
+        settings,
+        &settings.bucket,
+        &settings.object,
+        bytes,
+        "application/json",
+        Duration::from_secs(30),
+    )
+    .await
+    {
+        Ok(()) => tracing::info!(
+            bucket = %settings.bucket,
+            object = %settings.object,
+            "question bundle published"
+        ),
+        Err(error) => tracing::warn!(error = %error, "question bundle upload failed"),
+    }
+}
+
+/// Fetches the bundle from RustFS. Object storage is the only source; the
+/// service never reads the local file into PostgreSQL directly.
 async fn import_bundle(
     config: &QbankConfig,
 ) -> Result<Option<bundle::Bundle>, Box<dyn std::error::Error>> {
-    if let Some(settings) = &config.rustfs {
-        match rustfs::fetch_json(settings, Duration::from_secs(30)).await {
-            Ok(raw) => return Ok(Some(bundle::parse(&raw)?)),
-            Err(error) => tracing::warn!(error = %error, "rustfs bundle fetch failed"),
-        }
-    }
-    match &config.bundle_path {
-        Some(path) => Ok(Some(bundle::load(path)?)),
-        None => Ok(None),
-    }
+    let Some(settings) = &config.rustfs else {
+        return Ok(None);
+    };
+    let raw = rustfs::fetch_json(settings, Duration::from_secs(30)).await?;
+    Ok(Some(bundle::parse(&raw)?))
 }
 
 /// Publishes locally bundled question images to RustFS so the gateway streams
@@ -77,8 +122,8 @@ async fn import_bundle(
 ///
 /// Failures are logged, never fatal: a stale media set still lets the rest of
 /// the question bank import and serve questions.
-async fn publish_media(config: &QbankConfig) {
-    let (Some(settings), Some(dir)) = (&config.rustfs, &config.media_dir) else {
+async fn publish_media(settings: &RustfsSettings, config: &QbankConfig) {
+    let Some(dir) = &config.media_dir else {
         return;
     };
     let entries = match std::fs::read_dir(dir) {

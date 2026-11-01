@@ -1,10 +1,10 @@
 //! Minimal S3 (SigV4) client for RustFS.
 //!
-//! The question bundle and its images live in object storage. This client
-//! reads the bundle at startup and publishes locally bundled media so the
-//! gateway can serve `/media/*` straight from RustFS. Only plain HTTP
-//! endpoints are supported; internal object storage is not exposed to
-//! browsers, so TLS is terminated elsewhere when needed.
+//! RustFS owns the question bundle and its images. The service seeds the
+//! objects it ships with, then reads the bundle back from storage and syncs
+//! it into PostgreSQL. Only plain HTTP endpoints are supported; internal
+//! object storage is not exposed to browsers, so TLS is terminated elsewhere
+//! when needed.
 
 use std::time::Duration;
 
@@ -32,12 +32,9 @@ pub async fn fetch_json(settings: &RustfsSettings, timeout: Duration) -> Result<
         .map_err(|error| AppError::invalid(format!("rustfs payload is not UTF-8: {error}")))
 }
 
-/// Creates the bucket and grants anonymous `GetObject` on every object in it.
-///
-/// Question images are public content, and the gateway proxies them without
-/// credentials, so the bucket must allow anonymous reads. The policy is
-/// limited to a dedicated media bucket so other buckets stay private.
-pub async fn ensure_public_bucket(
+/// Creates the bucket when it does not exist yet. The bucket stays private:
+/// only credentialed callers such as this service may read the bundle.
+pub async fn ensure_bucket(
     settings: &RustfsSettings,
     bucket: &str,
     timeout: Duration,
@@ -52,7 +49,22 @@ pub async fn ensure_public_bucket(
             "rustfs refused to create bucket {bucket}: {status}"
         )));
     }
+    Ok(())
+}
 
+/// Creates the bucket and grants anonymous `GetObject` on every object in it.
+///
+/// Question images are public content, and the gateway proxies them without
+/// credentials, so the bucket must allow anonymous reads. The policy is
+/// limited to a dedicated media bucket so other buckets stay private.
+pub async fn ensure_public_bucket(
+    settings: &RustfsSettings,
+    bucket: &str,
+    timeout: Duration,
+) -> Result<()> {
+    ensure_bucket(settings, bucket, timeout).await?;
+
+    let bucket_path = format!("/{bucket}");
     let policy = json!({
         "Version": "2012-10-17",
         "Statement": [{

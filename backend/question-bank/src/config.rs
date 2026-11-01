@@ -12,6 +12,7 @@ pub struct QbankConfig {
     pub bind_addr: String,
     pub database_url: String,
     pub redis_url: String,
+    /// Local copy uploaded to RustFS to seed object storage.
     pub bundle_path: Option<PathBuf>,
     pub media_base: String,
     pub media_dir: Option<PathBuf>,

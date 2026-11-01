@@ -1,10 +1,8 @@
 //! Declarative question bundle.
 //!
-//! The JSON file is the editable source of truth for local and container
-//! deployments: importing it upserts chapters and questions into
-//! `question.chapters` and `question.questions`.
-
-use std::path::Path;
+//! The JSON bundle lives in RustFS and is synced into PostgreSQL on startup,
+//! upserting `question.chapters` and `question.questions`. PostgreSQL is a
+//! projection of the object, never an independent source.
 
 use common::error::{AppError, Result};
 use serde::{Deserialize, Serialize};
@@ -110,12 +108,6 @@ fn resolve_url(base: &str, file: &str) -> String {
         return file.to_owned();
     }
     format!("{}/{}", base.trim_end_matches('/'), file)
-}
-
-pub fn load(path: &Path) -> Result<Bundle> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|error| AppError::invalid(format!("read question bundle: {error}")))?;
-    parse(&raw)
 }
 
 pub fn parse(raw: &str) -> Result<Bundle> {

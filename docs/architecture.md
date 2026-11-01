@@ -101,10 +101,11 @@
 
 **实现状态**：鉴权、用户、推荐、对战、网关与三个 Consumer 已有可运行代码；`gateway` 当前为
 Nginx 模板（未使用 OpenResty Lua，限流与 JWT 黑名单检查仍在计划中）；`battle-service` 的 JWT
-验签与 Redis 撤销订阅仍为 TODO；`question-bank` 已实现为 Rust + tonic 服务：启动时从 RustFS
-拉取大 JSON 题库（SigV4 签名 GET），upsert 到 PostgreSQL `question` schema，读取走 Redis
-读缓存 `qbank:question:{id}`（TTL `QBANK_CACHE_TTL_SEC`，默认 300 秒），本地无 RustFS 时回退
-`deploy/qbank/questions.json`。
+验签与 Redis 撤销订阅仍为 TODO；`question-bank` 已实现为 Rust + tonic 服务：启动时先把随服务交付的
+题库包与配图写入 RustFS（仅作对象存储的种子），随后从 RustFS 拉取 JSON 题库（SigV4 签名 GET），
+upsert 到 PostgreSQL `question` schema，读取走 Redis 读缓存 `qbank:question:{id}`（TTL
+`QBANK_CACHE_TTL_SEC`，默认 300 秒）。RustFS 是题库唯一来源，PG 只是它的投影；对象存储不可用时
+服务保留 PG 中已有的题库。
 
 **拆分理由**：`user-api-sse` 独立（SSE 长连接、HPA 信号不同）；三个 Consumer 独立（topic 分区数不同，单进程无法独立扩缩）；`recommendation-service` 独立（flusher 后台批量任务与 GraphQL 请求争 PG）；`battle-service` 独立（WS 长连接、有状态、伸缩信号是连接数）。
 
